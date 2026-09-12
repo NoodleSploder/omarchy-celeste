@@ -177,19 +177,36 @@ Item {
         return ids;
     }
 
+    // Which monitor currently shows the calendar; "" means closed everywhere.
+    //
+    // Held as a monitor name rather than a bool because the panel exists once
+    // per surface: a shared bool would open and close all four at once. Storing
+    // the owner instead makes "only one at a time" fall out of the binding --
+    // opening on a second monitor reassigns the name, which closes the first.
+    property string calendarScreen: ""
+
     // Clicking the clock toggles Celeste's own calendar panel, which grows out
     // of the top border. Set bar.clock.calendarWidget to a plugin id to summon
     // that plugin's floating panel instead.
-    signal calendarToggled()
-
-    function openDashboard(tab) {
+    function toggleCalendar(screenName) {
         if (root.calendarWidgetId) {
             if (!root.toggleHosted(root.calendarWidgetId) && root.shell
                 && typeof root.shell.toggle === "function")
                 root.shell.toggle(root.calendarWidgetId, "{}");
             return;
         }
-        root.calendarToggled();
+        const name = String(screenName || "");
+        root.calendarScreen = (root.calendarScreen === name) ? "" : name;
+    }
+
+    function closeCalendar() {
+        root.calendarScreen = "";
+    }
+
+    // The monitor the user is on, for callers with no screen of their own.
+    function focusedScreenName() {
+        const mon = Hyprland.focusedMonitor;
+        return mon ? String(mon.name) : "";
     }
 
     // Clicking a status icon opens the owning Omarchy plugin's real panel.
@@ -229,7 +246,11 @@ Item {
         target: "calendar"
 
         function toggle(): void {
-            root.calendarToggled();
+            root.toggleCalendar(root.focusedScreenName());
+        }
+
+        function close(): void {
+            root.closeCalendar();
         }
     }
 
@@ -437,7 +458,8 @@ Item {
                 }
             }
 
-            property bool calendarOpen: false
+            readonly property bool calendarOpen:
+                root.calendarScreen !== "" && root.calendarScreen === String(panel.modelData.name)
 
             // Which status icon the pointer is over, and where it sits.
             property string popoutName: ""
@@ -566,7 +588,7 @@ Item {
                 enabled: panel.calendarOpen
                 visible: panel.calendarOpen
                 acceptedButtons: Qt.AllButtons
-                onPressed: panel.calendarOpen = false
+                onPressed: root.closeCalendar()
             }
 
             BarModules.Popout {
@@ -584,14 +606,6 @@ Item {
                 id: calendarContent
 
                 Popouts.CalendarPopout {}
-            }
-
-            Connections {
-                target: root
-
-                function onCalendarToggled() {
-                    panel.calendarOpen = !panel.calendarOpen;
-                }
             }
 
             BarModules.Popout {
@@ -683,7 +697,9 @@ Item {
                 id: clockComponent
 
                 BarComponents.Clock {
-                    onDashboardRequested: tab => root.openDashboard(tab)
+                    // Pass this surface's monitor so the panel opens here, and
+                    // only here.
+                    onDashboardRequested: tab => root.toggleCalendar(panel.modelData.name)
                     onCentreChanged: c => root.clockCentre = c
                 }
             }
