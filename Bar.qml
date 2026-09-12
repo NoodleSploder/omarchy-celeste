@@ -132,6 +132,14 @@ Item {
                     return clockComponent;
                 case "activeWindow":
                     return activeWindowComponent;
+                case "statusIcons":
+                    return statusIconsComponent;
+                case "tray":
+                    return trayComponent;
+                case "media":
+                    return mediaComponent;
+                case "resources":
+                    return resourceComponent;
                 default:
                     return null;
                 }
@@ -193,6 +201,30 @@ Item {
                 id: activeWindowComponent
 
                 BarComponents.ActiveWindow {}
+            }
+
+            Component {
+                id: statusIconsComponent
+
+                BarComponents.StatusIcons {}
+            }
+
+            Component {
+                id: trayComponent
+
+                BarComponents.Tray {}
+            }
+
+            Component {
+                id: mediaComponent
+
+                BarComponents.Media {}
+            }
+
+            Component {
+                id: resourceComponent
+
+                BarComponents.Resource {}
             }
         }
     }

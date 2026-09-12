@@ -5,8 +5,9 @@ inspired by [Caelestia](https://github.com/caelestia-dots/shell) and built as a
 native Omarchy plugin — **pure QML, no native code, no second Quickshell
 instance**.
 
-> Status: early. The bar renders workspaces, the active window and the clock.
-> Drawers (dashboard, launcher, sidebar, utilities, overview) are in progress.
+> Status: the bar is feature-complete — workspaces, active window, memory,
+> media, clock, tray and status icons. Drawers (dashboard, launcher, sidebar,
+> utilities, overview) are next.
 
 ## Why a plugin
 

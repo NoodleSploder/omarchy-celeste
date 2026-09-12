@@ -1,0 +1,6 @@
+singleton Audio 1.0 Audio.qml
+singleton Battery 1.0 Battery.qml
+singleton Net 1.0 Net.qml
+singleton Bt 1.0 Bt.qml
+singleton Keyboard 1.0 Keyboard.qml
+singleton SysUsage 1.0 SysUsage.qml
