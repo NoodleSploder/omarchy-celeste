@@ -177,11 +177,19 @@ Item {
         return ids;
     }
 
+    // Clicking the clock toggles Celeste's own calendar panel, which grows out
+    // of the top border. Set bar.clock.calendarWidget to a plugin id to summon
+    // that plugin's floating panel instead.
+    signal calendarToggled()
+
     function openDashboard(tab) {
-        if (root.toggleHosted(root.calendarWidgetId))
+        if (root.calendarWidgetId) {
+            if (!root.toggleHosted(root.calendarWidgetId) && root.shell
+                && typeof root.shell.toggle === "function")
+                root.shell.toggle(root.calendarWidgetId, "{}");
             return;
-        if (root.shell && typeof root.shell.toggle === "function")
-            root.shell.toggle(root.calendarWidgetId, "{}");
+        }
+        root.calendarToggled();
     }
 
     // Clicking a status icon opens the owning Omarchy plugin's real panel.
@@ -215,6 +223,14 @@ Item {
         name: "overview"
         description: "Toggle the workspace overview"
         onPressed: OverviewState.toggle()
+    }
+
+    IpcHandler {
+        target: "calendar"
+
+        function toggle(): void {
+            root.calendarToggled();
+        }
     }
 
     IpcHandler {
@@ -405,7 +421,7 @@ Item {
             // the overview cannot be handled by nulling the region's item; the
             // mask property itself has to go away, since an unset mask is what
             // means "the whole surface accepts input".
-            mask: OverviewState.open ? null : panel.barRegion
+            mask: (OverviewState.open || panel.calendarOpen) ? null : panel.barRegion
 
             property Region barRegion: Region {
                 item: barStrip
@@ -414,7 +430,14 @@ Item {
                     item: popout
                     intersection: Intersection.Combine
                 }
+
+                Region {
+                    item: calendarPopout
+                    intersection: Intersection.Combine
+                }
             }
+
+            property bool calendarOpen: false
 
             // Which status icon the pointer is over, and where it sits.
             property string popoutName: ""
@@ -492,6 +515,7 @@ Item {
             Item {
                 id: barStrip
 
+                z: 2
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
@@ -533,10 +557,49 @@ Item {
 
             // Anchor-only hosts: zero-width, invisible, but live so their
             // panels can open and position themselves against this surface.
+            // Catches clicks anywhere outside the bar and the open panel. Only
+            // present while the calendar is open, which is also the only time
+            // the surface accepts input beyond the bar strip.
+            MouseArea {
+                anchors.fill: parent
+                z: 0
+                enabled: panel.calendarOpen
+                visible: panel.calendarOpen
+                acceptedButtons: Qt.AllButtons
+                onPressed: panel.calendarOpen = false
+            }
+
+            BarModules.Popout {
+                id: calendarPopout
+
+                anchors.top: barStrip.bottom
+                z: 3
+                placement: "centre"
+                borderThickness: root.borderThickness
+                open: panel.calendarOpen
+                contentComponent: panel.calendarOpen ? calendarContent : null
+            }
+
+            Component {
+                id: calendarContent
+
+                Popouts.CalendarPopout {}
+            }
+
+            Connections {
+                target: root
+
+                function onCalendarToggled() {
+                    panel.calendarOpen = !panel.calendarOpen;
+                }
+            }
+
             BarModules.Popout {
                 id: popout
 
                 anchors.top: barStrip.bottom
+                z: 3
+                placement: "right"
                 borderThickness: root.borderThickness
                 open: panel.popoutName !== ""
 

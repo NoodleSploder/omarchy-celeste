@@ -52,13 +52,17 @@ Shape {
             x: root.size
             y: 0
         }
-        // Arc centred on the opposite corner, carving the disc out of the square.
+        // The arc runs from (size,0) to (0,size) with radius == size, which two
+        // circles satisfy: one centred at the origin, one at the opposite
+        // corner. Only the latter curves *away* from the filled corner and
+        // carves a quarter-disc out of the square; the former bulges the wrong
+        // way and leaves a sliver. Clockwise selects it.
         PathArc {
             x: 0
             y: root.size
             radiusX: root.size
             radiusY: root.size
-            direction: PathArc.Counterclockwise
+            direction: PathArc.Clockwise
         }
         PathLine {
             x: 0

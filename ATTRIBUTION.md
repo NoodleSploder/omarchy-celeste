@@ -17,6 +17,18 @@ licensed **GPL-3.0-or-later**, the same licence as that project.
   `ActiveWindow` are reimplementations of Caelestia's, including the
   per-monitor workspace-block derivation.
 
+## Omarchy
+
+`modules/bar/popouts/CalendarPopout.qml` and `ClockModel.js` are ported from
+Omarchy's own calendar (`shell/plugins/panels/clock/`), which is **MIT**
+licensed. Omarchy draws that calendar inside a `KeyboardPanel` — its own
+floating window — which cannot be reparented into a panel that grows out of the
+border, so the view and its state were ported rather than reused. It imports
+`qs.Commons` and `qs.Ui` directly, so it renders with the same `Style`, `Color`
+and controls as the original.
+
+This is a fork: if Omarchy changes its calendar, Celeste will not follow.
+
 ## What is not
 
 - `core/Colours.qml` is original: Caelestia derives a Material 3 scheme from the

@@ -49,7 +49,7 @@ QtObject {
             // "the date/time label for the bar, and the host for the calendar
             // popup". tmn73.calendar is a separate third-party plugin that looks
             // similar; point calendarWidget at it instead if that is wanted.
-            clock: { background: false, showDate: true, showIcon: true, calendarWidget: "omarchy.clock" },
+            clock: { background: false, showDate: true, showIcon: true, calendarWidget: "" },
             // Extra plugins to keep live purely so their panels can be opened.
             anchorWidgets: [],
             // Clicking a status icon opens the matching Omarchy plugin's own
@@ -99,6 +99,7 @@ QtObject {
         },
         dashboard: { enabled: true, showOnHover: false, dragThreshold: 30, mediaUpdateInterval: 500 },
         sidebar: { dragThreshold: 50 },
+        clockPanel: { weekStartDay: null, birthYear: 0, lifeExpectancy: 0 },
         services: { useTwelveHourClock: root.localeIsTwelveHour, defaultPlayer: "", brightnessIncrement: 0.1 }
     })
 
@@ -130,6 +131,25 @@ QtObject {
     readonly property var dashboard: effective.dashboard
     readonly property var sidebar: effective.sidebar
     readonly property var services: effective.services
+
+    // Settings for the ported Omarchy calendar panel. Omarchy stores these on
+    // the bar entry; Celeste keeps them in its own config file.
+    readonly property var clockPanel: effective.clockPanel
+
+    function writeClockPanel(values) {
+        const next = {};
+        for (const k in root.user)
+            next[k] = root.user[k];
+        next.clockPanel = values;
+        root.user = next;
+        writer.setText(JSON.stringify(next, null, 2));
+    }
+
+    property FileView writer: FileView {
+        path: root.primaryPath
+        printErrors: false
+        atomicWrites: true
+    }
 
     function _apply(text, path) {
         try {
