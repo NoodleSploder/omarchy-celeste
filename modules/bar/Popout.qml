@@ -4,31 +4,28 @@ import QtQuick
 import "../../core"
 import "../../components"
 
-// A panel that grows out of the bar.
+// A panel that grows out of the top-right of the frame.
 //
-// It is drawn inside the same fullscreen surface as the bar and border, so it
-// shares their colour and reads as one continuous shape. The top edge sits
-// flush against the bar strip with no radius, and a pair of inverted corner
-// fillets bridge the join, so the panel appears to swell out of the border
-// rather than hang below it.
+// It is pinned flush to both the bar above and the right border beside it, so
+// those two edges are square and continue the frame; only the two free corners
+// are shaped. Where the panel leaves the frame, an InvertedCorner fillet bridges
+// the join so the panel appears to swell out of the border rather than sit on
+// top of it:
 //
-// Opening animates height and opacity on the expressive spatial curve -- the
-// one with slight overshoot -- which is what gives it the organic "popping into
-// place" motion rather than a linear slide.
+//   - left of the top edge, bridging bar -> panel
+//   - below the right edge, bridging panel -> right border
+//
+// The fillets are positioned OUTSIDE this item's bounds, so the root must never
+// clip. Only the inner content holder does.
 Item {
     id: root
 
     property bool open: false
-    property real anchorCentre: 0        // x centre to point at, in surface coords
-    property int edgeMargin: Tokens.padding.medium
+    property int borderThickness: 0
     property int radius: Tokens.rounding.extraLarge
     property int filletSize: Tokens.rounding.large
     property color colour: Colours.tPalette.m3surface
 
-    // A Component rather than a default property alias. Aliasing the default
-    // property at `contentHolder.data` would also swallow this file's OWN
-    // children -- background, fillets, and contentHolder itself -- since they
-    // are declared in the same scope.
     property Component contentComponent: null
 
     readonly property int contentWidth: contentLoader.item ? contentLoader.item.implicitWidth : 0
@@ -37,18 +34,15 @@ Item {
     readonly property int fullWidth: root.contentWidth + Tokens.padding.large * 2
     readonly property int fullHeight: root.contentHeight + Tokens.padding.large * 2
 
-    // Clamp inside the border so the panel never overhangs the frame.
-    readonly property real idealX: root.anchorCentre - fullWidth / 2
-    readonly property real minX: root.edgeMargin
-    readonly property real maxX: (parent ? parent.width : 0) - fullWidth - root.edgeMargin
+    // Flush against the inner edge of the right border, directly under the bar.
+    anchors.right: parent ? parent.right : undefined
+    anchors.rightMargin: root.borderThickness
 
-    x: Math.max(root.minX, Math.min(root.maxX, root.idealX))
     width: root.fullWidth
     height: root.open ? root.fullHeight : 0
 
     visible: height > 0
     opacity: root.open ? 1 : 0
-    clip: true
 
     Behavior on height {
         Anim {
@@ -62,38 +56,37 @@ Item {
         }
     }
 
-    Behavior on x {
-        Anim {
-            type: Anim.FastSpatial
-        }
-    }
-
-    // Body: square at the top where it meets the bar, rounded below.
+    // Body. Top and right are square: they continue the bar and the border.
     Rectangle {
         anchors.fill: parent
         color: root.colour
         topLeftRadius: 0
         topRightRadius: 0
         bottomLeftRadius: root.radius
-        bottomRightRadius: root.radius
+        bottomRightRadius: 0
     }
 
-    Loader {
-        id: contentLoader
+    Item {
+        anchors.fill: parent
+        clip: true
 
-        anchors.centerIn: parent
-        active: root.open || root.height > 0
-        sourceComponent: root.contentComponent
-        opacity: root.open ? 1 : 0
+        Loader {
+            id: contentLoader
 
-        Behavior on opacity {
-            Anim {
-                type: Anim.DefaultEffects
+            anchors.centerIn: parent
+            active: root.open || root.height > 0
+            sourceComponent: root.contentComponent
+            opacity: root.open ? 1 : 0
+
+            Behavior on opacity {
+                Anim {
+                    type: Anim.DefaultEffects
+                }
             }
         }
     }
 
-    // The fillets live just outside the panel, bridging it to the bar above.
+    // Bar -> panel, at the panel's top-left.
     InvertedCorner {
         anchors.right: parent.left
         anchors.top: parent.top
@@ -103,12 +96,13 @@ Item {
         visible: root.open
     }
 
+    // Panel -> right border, below the panel's right edge.
     InvertedCorner {
-        anchors.left: parent.right
-        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.top: parent.bottom
         size: root.filletSize
         colour: root.colour
-        corner: InvertedCorner.TopLeft
+        corner: InvertedCorner.TopRight
         visible: root.open
     }
 }

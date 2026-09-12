@@ -43,7 +43,23 @@ QtObject {
             showOnHover: true,
             excludedScreens: [],
             activeWindow: { compact: false, inverted: false, showOnHover: true },
-            clock: { background: false, showDate: true, showIcon: true },
+            // Clicking the clock opens this plugin's panel. It is hosted
+            // invisibly as an anchor, so it needs no entry in the bar.
+            clock: { background: false, showDate: true, showIcon: true, calendarWidget: "tmn73.calendar" },
+            // Extra plugins to keep live purely so their panels can be opened.
+            anchorWidgets: [],
+            // Clicking a status icon opens the matching Omarchy plugin's own
+            // panel, which is far richer than anything Celeste reimplements: a
+            // full mixer, the network list, the device list. Each is hosted
+            // invisibly as an anchor. Set an entry to "" to fall back to
+            // Celeste's built-in hover popout only.
+            statusIconPanels: {
+                audio: "omarchy.audio",
+                microphone: "omarchy.audio",
+                network: "omarchy.network",
+                bluetooth: "omarchy.bluetooth",
+                battery: "omarchy.power"
+            },
             tray: { background: false, compact: false, recolour: false },
             popouts: { tray: true, statusIcons: true, activeWindow: true },
             scrollActions: { workspaces: true, volume: true, brightness: true },

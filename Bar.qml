@@ -134,18 +134,43 @@ Item {
     // Clicking the clock opens the Omarchy calendar panel.
     //
     // That panel belongs to a bar-widget plugin and anchors itself to a *live*
-    // widget instance, so the plugin has to be hosted somewhere in this bar.
-    // Add it to bar.entries with "hidden": true to host it purely as an anchor,
-    // without drawing a second clock next to Celeste's own.
-    property string calendarWidgetId: "tmn73.calendar"
+    // widget instance, so the plugin must be hosted somewhere in this bar. Rather
+    // than make the user add it to bar.entries by hand, each surface hosts it
+    // invisibly below -- see anchorWidgetIds.
+    property string calendarWidgetId: Config.bar.clock.calendarWidget
+
+    // Plugins hosted purely as panel anchors: live, laid out, but drawing
+    // nothing. Any id that the registry does not know is skipped.
+    readonly property var anchorWidgetIds: {
+        const ids = [];
+        if (root.calendarWidgetId)
+            ids.push(root.calendarWidgetId);
+        for (const id of (Config.bar.anchorWidgets || []))
+            if (ids.indexOf(id) === -1)
+                ids.push(id);
+        const panels = Config.bar.statusIconPanels || ({});
+        for (const key in panels) {
+            const id = panels[key];
+            if (id && ids.indexOf(id) === -1)
+                ids.push(id);
+        }
+        return ids;
+    }
 
     function openDashboard(tab) {
         if (root.toggleHosted(root.calendarWidgetId))
             return;
-        // Not hosted: ask the shell, which will route back through
-        // summonBarWidget and fail loudly rather than silently doing nothing.
         if (root.shell && typeof root.shell.toggle === "function")
             root.shell.toggle(root.calendarWidgetId, "{}");
+    }
+
+    // Clicking a status icon opens the owning Omarchy plugin's real panel.
+    function openStatusPanel(name) {
+        const panels = Config.bar.statusIconPanels || ({});
+        const id = panels[String(name)] || "";
+        if (!id)
+            return false;
+        return root.toggleHosted(id);
     }
 
     function toggleHosted(id) {
@@ -292,17 +317,21 @@ Item {
             // Regions union, so the frame stays click-through either way -- and
             // an open panel must be added or its own controls never receive the
             // clicks that the mask is busy discarding.
-            mask: Region {
-                item: OverviewState.open ? null : barStrip
+            // A Region with no item is EMPTY, not "everything" -- the exclusion
+            // windows above rely on exactly that to accept no input at all. So
+            // the overview cannot be handled by nulling the region's item; the
+            // mask property itself has to go away, since an unset mask is what
+            // means "the whole surface accepts input".
+            mask: OverviewState.open ? null : panel.barRegion
+
+            property Region barRegion: Region {
+                item: barStrip
 
                 Region {
                     item: popout
                     intersection: Intersection.Combine
                 }
             }
-
-            // A null mask item means "the whole surface", which is what the
-            // overview needs; the bar strip alone is the resting state.
 
             // Which status icon the pointer is over, and where it sits.
             property string popoutName: ""
@@ -417,12 +446,40 @@ Item {
                 }
             }
 
+            // Anchor-only hosts: zero-width, invisible, but live so their
+            // panels can open and position themselves against this surface.
+            Item {
+                id: anchorHosts
+
+                anchors.top: parent.top
+                anchors.right: parent.right
+                width: 0
+                height: root.barSize
+
+                Repeater {
+                    model: root.anchorWidgetIds
+
+                    delegate: BarModules.HostedWidget {
+                        required property string modelData
+
+                        widgetId: modelData
+                        registry: root.barWidgetRegistry
+                        shell: root.shell
+                        settings: ({ hidden: true })
+                        barSize: Tokens.sizes.bar.innerWidth
+                        hostScreen: panel.modelData
+
+                        onRegistered: (id, self) => root.registerHosted(id, self)
+                        onUnregistered: (id, self) => root.unregisterHosted(id, self)
+                    }
+                }
+            }
+
             BarModules.Popout {
                 id: popout
 
                 anchors.top: barStrip.bottom
-                anchorCentre: panel.popoutCentre
-                edgeMargin: root.borderThickness + Tokens.padding.small
+                borderThickness: root.borderThickness
                 open: panel.popoutName !== ""
 
                 contentComponent: {
@@ -522,6 +579,7 @@ Item {
 
                 BarComponents.StatusIcons {
                     onHoverChanged: (name, centre) => panel.setPopout(name, centre)
+                    onIconClicked: name => root.openStatusPanel(name)
                 }
             }
 

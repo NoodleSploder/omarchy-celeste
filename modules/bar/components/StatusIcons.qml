@@ -22,6 +22,9 @@ StyledRect {
     // so the popout can point at the exact glyph rather than the whole pill.
     signal hoverChanged(string name, real centre)
 
+    // Clicking an icon opens the owning Omarchy plugin's own panel.
+    signal iconClicked(string name)
+
     readonly property int gap: Math.round(Tokens.spacing.medium / 2)
 
     function collapsed(id) {
@@ -44,6 +47,14 @@ StyledRect {
     implicitWidth: row.implicitWidth + Tokens.padding.medium * 2
     implicitHeight: Tokens.sizes.bar.innerWidth
 
+    TapHandler {
+        onSingleTapped: {
+            const name = root.entryAt(hover.point.position);
+            if (name)
+                root.iconClicked(name);
+        }
+    }
+
     HoverHandler {
         id: hover
 
@@ -56,28 +67,36 @@ StyledRect {
         }
     }
 
+    function iconAt(point) {
+        for (let i = 0; i < repeater.count; i++) {
+            const icon = repeater.itemAt(i);
+            if (!icon)
+                continue;
+            const local = root.mapToItem(icon, point.x, point.y);
+            if (local.x >= 0 && local.x <= icon.width)
+                return icon;
+        }
+        return null;
+    }
+
+    function entryAt(point) {
+        const icon = root.iconAt(point);
+        return icon ? icon.entryId : "";
+    }
+
     function updateHover() {
         if (!hover.hovered) {
             root.hoverChanged("", 0);
             return;
         }
-        const p = hover.point.position;
-        for (let i = 0; i < repeater.count; i++) {
-            const icon = repeater.itemAt(i);
-            if (!icon)
-                continue;
-            const local = root.mapToItem(icon, p.x, p.y);
-            if (local.x >= 0 && local.x <= icon.width) {
-                // null maps to scene coordinates, which for a layer-shell
-                // surface are window coordinates -- the space the popout is
-                // positioned in. Mapping to the immediate parent would report a
-                // few dozen pixels and pin every popout to the left edge.
-                const centre = icon.mapToItem(null, icon.width / 2, 0).x;
-                root.hoverChanged(icon.entryId, centre);
-                return;
-            }
+        const icon = root.iconAt(hover.point.position);
+        if (!icon) {
+            root.hoverChanged("", 0);
+            return;
         }
-        root.hoverChanged("", 0);
+        // null maps to scene coordinates, which for a layer-shell surface are
+        // window coordinates -- the space the popout is positioned in.
+        root.hoverChanged(icon.entryId, icon.mapToItem(null, icon.width / 2, 0).x);
     }
 
     RowLayout {
