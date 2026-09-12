@@ -57,6 +57,15 @@ StyledClippingRect {
         return root.wsBase - 1 + Math.max(0, Math.floor((root.activeWsId - root.wsBase) / s)) * s;
     }
 
+    // Hyprland can be configured for Lua dispatch, where the plain
+    // "workspace N" string is a syntax error. Quickshell reports which mode is
+    // active, so pick the matching form rather than assuming the classic one.
+    function focusWorkspace(id) {
+        Hyprland.dispatch(Hyprland.usingLua
+            ? `hl.dsp.focus({ workspace = "${id}" })`
+            : `workspace ${id}`);
+    }
+
     implicitWidth: layout.implicitWidth + Tokens.padding.small
     implicitHeight: Tokens.sizes.bar.innerWidth
 
@@ -120,7 +129,7 @@ StyledClippingRect {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Hyprland.dispatch(`workspace ${ws.wsId}`)
+                    onClicked: root.focusWorkspace(ws.wsId)
                 }
             }
         }
