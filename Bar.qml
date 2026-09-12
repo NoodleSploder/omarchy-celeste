@@ -19,6 +19,7 @@ import Quickshell
 import Quickshell.Wayland
 import "core"
 import "components"
+import "modules/bar" as BarModules
 import "modules/bar/components" as BarComponents
 
 Item {
@@ -38,7 +39,10 @@ Item {
     // shell.qml binds these into PluginBarApi so panels and overlays can anchor
     // themselves relative to whichever bar is active.
 
-    readonly property int padding: Math.max(Tokens.padding.small, Config.border.thickness)
+    readonly property int borderThickness: Config.border.enabled ? Config.border.thickness : 0
+    readonly property int borderRounding: Config.border.rounding
+
+    readonly property int padding: Math.max(Tokens.padding.small, borderThickness)
     readonly property int barSize: Tokens.sizes.bar.innerWidth + padding * 2
     property bool barHidden: false
     readonly property string position: "top"
@@ -94,6 +98,72 @@ Item {
     }
 
     // ------------------------------------------------------------ surfaces
+    //
+    // Two window sets per monitor.
+    //
+    // The frame must be drawn by a window that covers the whole screen, because
+    // its arched corners span the join between the bar and the screen edges. But
+    // a fullscreen layer-shell surface would swallow every click, so its input
+    // mask is narrowed to the bar strip and nothing else -- the frame is inert.
+    //
+    // A fullscreen window also cannot express four different exclusive zones, so
+    // the space each edge reserves is claimed by four 1x1 helper windows. They
+    // are 1x1 rather than 0x0 deliberately: a 0x0 layer surface never maps, and
+    // then reserves nothing, silently.
+
+    Variants {
+        model: Quickshell.screens
+
+        Scope {
+            id: exclusions
+
+            required property var modelData
+
+            PanelWindow {
+                screen: exclusions.modelData
+                WlrLayershell.namespace: "celeste-exclusion"
+                anchors.top: true
+                exclusiveZone: root.barHidden ? 0 : root.barSize
+                mask: Region {}
+                implicitWidth: 1
+                implicitHeight: 1
+                color: "transparent"
+            }
+
+            PanelWindow {
+                screen: exclusions.modelData
+                WlrLayershell.namespace: "celeste-exclusion"
+                anchors.left: true
+                exclusiveZone: root.borderThickness
+                mask: Region {}
+                implicitWidth: 1
+                implicitHeight: 1
+                color: "transparent"
+            }
+
+            PanelWindow {
+                screen: exclusions.modelData
+                WlrLayershell.namespace: "celeste-exclusion"
+                anchors.right: true
+                exclusiveZone: root.borderThickness
+                mask: Region {}
+                implicitWidth: 1
+                implicitHeight: 1
+                color: "transparent"
+            }
+
+            PanelWindow {
+                screen: exclusions.modelData
+                WlrLayershell.namespace: "celeste-exclusion"
+                anchors.bottom: true
+                exclusiveZone: root.borderThickness
+                mask: Region {}
+                implicitWidth: 1
+                implicitHeight: 1
+                color: "transparent"
+            }
+        }
+    }
 
     Variants {
         model: Quickshell.screens
@@ -112,10 +182,21 @@ Item {
             anchors.top: true
             anchors.left: true
             anchors.right: true
+            anchors.bottom: true
 
-            implicitHeight: root.barSize
-            exclusiveZone: root.barHidden ? 0 : root.barSize
+            // The helper windows above own the exclusive zones. This surface
+            // must also IGNORE them: a layer-shell window anchored to all four
+            // edges is otherwise shrunk by every other surface's exclusive zone,
+            // including its own helpers, which pushes the frame inward and
+            // leaves a strip of wallpaper above the bar.
+            exclusionMode: ExclusionMode.Ignore
+            exclusiveZone: 0
             color: "transparent"
+
+            // Only the bar strip accepts input; the frame is click-through.
+            mask: Region {
+                item: barStrip
+            }
 
             // Declared here rather than on root: the Components below live in
             // this scope, so a resolver on root could not see them.
@@ -145,32 +226,46 @@ Item {
                 }
             }
 
-            StyledRect {
+            BarModules.Border {
                 anchors.fill: parent
-                color: Colours.tPalette.m3surface
+                borderLeft: root.borderThickness
+                borderRight: root.borderThickness
+                borderBottom: root.borderThickness
+                borderTop: root.barHidden ? root.borderThickness : root.barSize
+                radius: root.borderRounding
             }
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: root.padding
-                spacing: Tokens.spacing.medium
+            Item {
+                id: barStrip
 
-                Repeater {
-                    model: root.entries
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: root.barHidden ? 0 : root.barSize
+                visible: !root.barHidden
 
-                    delegate: Loader {
-                        id: entry
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: root.padding
+                    spacing: Tokens.spacing.medium
 
-                        required property var modelData
-                        readonly property string entryId: entry.modelData.id
+                    Repeater {
+                        model: root.entries
 
-                        Layout.alignment: Qt.AlignVCenter
-                        Layout.fillWidth: entry.entryId === "spacer"
-                        // Workspaces is loaded synchronously so the bar does not
-                        // visibly reflow on startup.
-                        asynchronous: entry.entryId !== "workspaces"
+                        delegate: Loader {
+                            id: entry
 
-                        sourceComponent: panel.componentFor(entry.entryId)
+                            required property var modelData
+                            readonly property string entryId: entry.modelData.id
+
+                            Layout.alignment: Qt.AlignVCenter
+                            Layout.fillWidth: entry.entryId === "spacer"
+                            // Workspaces is loaded synchronously so the bar does
+                            // not visibly reflow on startup.
+                            asynchronous: entry.entryId !== "workspaces"
+
+                            sourceComponent: panel.componentFor(entry.entryId)
+                        }
                     }
                 }
             }
@@ -200,7 +295,9 @@ Item {
             Component {
                 id: activeWindowComponent
 
-                BarComponents.ActiveWindow {}
+                BarComponents.ActiveWindow {
+                    screen: panel.modelData
+                }
             }
 
             Component {

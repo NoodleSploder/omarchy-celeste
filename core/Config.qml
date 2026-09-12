@@ -27,9 +27,17 @@ QtObject {
 
     readonly property var defaults: ({
         appearance: {
-            transparency: { enabled: false, base: 0.78, layers: 0.58 }
+            transparency: { enabled: false, base: 0.78, layers: 0.58 },
+            // Caelestia's faces. GoogleSansFlex is its upstream default but is
+            // not packaged on Arch; Rubik is the face it uses for the clock and
+            // workspaces and is a close match for the rest.
+            font: {
+                sans: "Rubik",
+                mono: "CaskaydiaCove NF",
+                material: "Material Symbols Rounded"
+            }
         },
-        border: { thickness: 10, minThickness: 4, rounding: 25 },
+        border: { thickness: 10, minThickness: 4, rounding: 25, enabled: true },
         bar: {
             persistent: true,
             showOnHover: true,

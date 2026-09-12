@@ -105,10 +105,17 @@ QtObject {
 
     // -------------------------------------------------------------- fonts
 
+    // Families come from config, defaulting to the faces Caelestia used.
+    //
+    // Deliberately NOT inherited from Style.font.family: Omarchy's font setting
+    // is shared with the terminals (omarchy font set rewrites alacritty, kitty,
+    // ghostty and foot), so it is monospace by design. A shell bar wants a
+    // proportional face, and following the terminal font would make that
+    // impossible without breaking every terminal.
     readonly property QtObject font: QtObject {
-        readonly property string sans: Style.font && Style.font.family ? Style.font.family : "sans-serif"
-        readonly property string mono: "CaskaydiaMono Nerd Font"
-        readonly property string material: "Material Symbols Rounded"
+        readonly property string sans: Config.appearance.font.sans
+        readonly property string mono: Config.appearance.font.mono
+        readonly property string material: Config.appearance.font.material
 
         readonly property QtObject body: QtObject {
             readonly property font small: Qt.font({ family: root.font.sans, pointSize: root.fontSize.small })
