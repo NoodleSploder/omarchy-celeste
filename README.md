@@ -5,9 +5,9 @@ inspired by [Caelestia](https://github.com/caelestia-dots/shell) and built as a
 native Omarchy plugin — **pure QML, no native code, no second Quickshell
 instance**.
 
-> Status: the bar is feature-complete — workspaces, active window, memory,
-> media, clock, tray and status icons. Drawers (dashboard, launcher, sidebar,
-> utilities, overview) are next.
+> Status: bar complete, with hover popouts and a workspace overview
+> (click-and-drag windows between workspaces and across monitors). Dashboard,
+> launcher and sidebar drawers are next.
 
 ## Why a plugin
 
@@ -55,6 +55,21 @@ inside the shell's import path. To load it in isolation, copy `Commons/` and
 `Ui/` out of `/usr/share/omarchy/shell` into a probe directory next to a copy of
 the plugin, and point Quickshell at a `shell.qml` that `Loader`s `plugin/Bar.qml`.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Workspace overview
+
+Clicking the workspace you are already on opens an expose-style overview on
+every monitor at once, each showing its own block of workspaces with live window
+previews. Drag a window between workspaces — including onto another monitor's
+overview, which works because every card publishes its rectangle in global
+layout coordinates and the dragging surface hit-tests them itself.
+
+Bind it, or drive it from a script:
+
+```sh
+hyprctl dispatch 'hl.dsp.global("celeste:overview")'
+qs -c omarchy ipc call overview toggle
+```
 
 ## Hosting Omarchy bar widgets
 

@@ -17,12 +17,15 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Io
 import Quickshell.Wayland
 import "core"
 import "components"
 import "modules/bar" as BarModules
 import "modules/bar/components" as BarComponents
 import "modules/bar/popouts" as Popouts
+import "modules/overview" as OverviewModule
+import "services"
 
 Item {
     id: root
@@ -154,6 +157,41 @@ Item {
         return root.summonBarWidget(id);
     }
 
+    // ------------------------------------------------------- external control
+    //
+    // A global shortcut so the overview can be bound in Hyprland, and an IPC
+    // target so it can be driven from scripts:
+    //
+    //   hyprctl dispatch 'hl.dsp.global("celeste:overview")'
+    //   qs -c omarchy ipc call overview toggle
+
+    GlobalShortcut {
+        appid: "celeste"
+        name: "overview"
+        description: "Toggle the workspace overview"
+        onPressed: OverviewState.toggle()
+    }
+
+    IpcHandler {
+        target: "overview"
+
+        function toggle(): void {
+            OverviewState.toggle();
+        }
+
+        function open(): void {
+            OverviewState.open = true;
+        }
+
+        function close(): void {
+            OverviewState.close();
+        }
+
+        function isOpen(): bool {
+            return OverviewState.open;
+        }
+    }
+
     // ------------------------------------------------------------ surfaces
     //
     // Two window sets per monitor.
@@ -255,13 +293,16 @@ Item {
             // an open panel must be added or its own controls never receive the
             // clicks that the mask is busy discarding.
             mask: Region {
-                item: barStrip
+                item: OverviewState.open ? null : barStrip
 
                 Region {
                     item: popout
                     intersection: Intersection.Combine
                 }
             }
+
+            // A null mask item means "the whole surface", which is what the
+            // overview needs; the bar strip alone is the resting state.
 
             // Which status icon the pointer is over, and where it sits.
             property string popoutName: ""
@@ -315,6 +356,14 @@ Item {
                     // id that matches nothing renders at zero width.
                     return hostedWidgetComponent;
                 }
+            }
+
+            OverviewModule.Overview {
+                anchors.fill: parent
+                hostScreen: panel.modelData
+                barSize: root.barSize
+                borderThickness: root.borderThickness
+                z: 10
             }
 
             BarModules.Border {
@@ -447,6 +496,8 @@ Item {
 
                 BarComponents.Workspaces {
                     screen: panel.modelData
+
+                    onActiveWorkspaceClicked: OverviewState.toggle()
                 }
             }
 

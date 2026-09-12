@@ -20,6 +20,10 @@ StyledClippingRect {
 
     required property var screen
 
+    // Clicking the workspace you are already on opens the overview rather than
+    // re-dispatching a focus to where you already are.
+    signal activeWorkspaceClicked()
+
     readonly property int shown: Config.bar.workspaces.shown
     readonly property bool perMonitor: Config.bar.workspaces.perMonitorWorkspaces
 
@@ -129,7 +133,12 @@ StyledClippingRect {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.focusWorkspace(ws.wsId)
+                    onClicked: {
+                        if (ws.isActive)
+                            root.activeWorkspaceClicked();
+                        else
+                            root.focusWorkspace(ws.wsId);
+                    }
                 }
             }
         }
