@@ -52,17 +52,24 @@ Shape {
             x: root.size
             y: 0
         }
-        // The arc runs from (size,0) to (0,size) with radius == size, which two
-        // circles satisfy: one centred at the origin, one at the opposite
-        // corner. Only the latter curves *away* from the filled corner and
-        // carves a quarter-disc out of the square; the former bulges the wrong
-        // way and leaves a sliver. Clockwise selects it.
+        // The arc runs from (size,0) to (0,size) with radius == size. Two
+        // circles satisfy that: one centred at the filled corner (0,0), one at
+        // the opposite corner (size,size). Both arcs are exactly 90 degrees, so
+        // largeArc cannot disambiguate them -- the sweep flag alone picks the
+        // centre.
+        //
+        // The centre must be the OPPOSITE corner. Then the arc is tangent to the
+        // top edge where it starts and to the left edge where it ends, so the
+        // shape is the square minus a quarter-disc: a concave fillet that flows
+        // out of both edges. Centring on the filled corner instead gives a
+        // convex quarter-disc that bulges into the panel -- the corner arching
+        // the wrong way.
         PathArc {
             x: 0
             y: root.size
             radiusX: root.size
             radiusY: root.size
-            direction: PathArc.Clockwise
+            direction: PathArc.Counterclockwise
         }
         PathLine {
             x: 0
