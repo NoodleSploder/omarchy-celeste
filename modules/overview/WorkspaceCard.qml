@@ -95,7 +95,12 @@ StyledRect {
             delegate: WindowPreview {
                 required property var modelData
 
-                readonly property var ipc: modelData.lastIpcObject
+                // A toplevel can appear before Hyprland has reported geometry
+                // for it, so `at`/`size` may be missing for a frame or two.
+                readonly property var ipc: {
+                    const o = modelData ? modelData.lastIpcObject : null;
+                    return (o && o.at && o.size) ? o : null;
+                }
 
                 toplevel: modelData
                 workspaceId: root.workspaceId

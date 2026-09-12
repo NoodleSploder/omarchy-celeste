@@ -1,19 +1,19 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell
 import "../../core"
 
 // Stands in for Omarchy's Ui/PluginBarApi for widgets hosted inside Celeste.
 //
 // That type lives in the Omarchy shell tree and is constructed by the built-in
 // bar, so a third-party bar cannot hand out a real one. Hosted widgets read it
-// as `bar`, so this mirrors its property names and supplies Celeste's palette.
+// as `bar` and call its methods directly, so this must mirror the whole public
+// surface -- supplying only the underscore-prefixed hooks is not enough, and a
+// panel that calls a missing method dies with "not a function" and never opens.
 //
-// The underscore-prefixed members are the host's internal callbacks. They are
-// provided as no-ops rather than left undefined: a widget that calls one gets a
-// harmless nothing instead of "not a function". The visible consequence is that
-// a hosted widget's own popouts and tooltips do not open -- it renders and
-// updates, but its richer interactions are inert.
+// Property mutability matters too: panels assign to centerHoverRevealSuppressed
+// and activePopout, so those cannot be readonly.
 QtObject {
     id: api
 
@@ -36,25 +36,62 @@ QtObject {
 
     property bool centerSectionRevealHeld: false
     property bool _centerHoverRevealSuppressed: false
-    readonly property bool centerHoverRevealSuppressed: _centerHoverRevealSuppressed
+    property bool centerHoverRevealSuppressed: api._centerHoverRevealSuppressed
 
     property var activePopout: null
     property var clickTargets: []
     property var layoutConfig: ({})
     readonly property var foreignPopoutMarker: ({ foreign: true })
 
-    function _noop() {
-        return null;
+    // Only one hosted panel is open at a time, so requesting a popout closes
+    // whichever other one currently holds it.
+    signal popoutRequested(var owner)
+    signal popoutReleased(var owner)
+
+    function setCenterHoverRevealSuppressed(value) {
+        api._centerHoverRevealSuppressed = !!value;
     }
 
-    property var _showTooltip: api._noop
-    property var _hideTooltip: api._noop
-    property var _registerClickTarget: api._noop
-    property var _unregisterClickTarget: api._noop
-    property var _requestPopout: api._noop
-    property var _releasePopout: api._noop
-    property var _switchPanelFrom: api._noop
-    property var _targetBelongsToWindow: api._noop
-    property var _moduleWidgets: api._noop
-    property var _run: api._noop
+    // Tooltips are Celeste's job to draw and it does not yet; accepting the call
+    // silently is correct, and far better than throwing at the widget.
+    function showTooltip(target, text) {}
+
+    function hideTooltip(target) {}
+
+    function registerClickTarget(target) {}
+
+    function unregisterClickTarget(target) {}
+
+    function requestPopout(owner) {
+        api.activePopout = owner;
+        api.popoutRequested(owner);
+    }
+
+    function releasePopout(owner) {
+        if (api.activePopout === owner)
+            api.activePopout = null;
+        api.popoutReleased(owner);
+    }
+
+    // Keyboard panel-switching across bar widgets is not wired up; report that
+    // nothing was switched so the caller keeps its own panel open.
+    function switchPanelFrom(owner, direction) {
+        return false;
+    }
+
+    function targetBelongsToWindow(target, window) {
+        if (!target || !window)
+            return false;
+        return target.QsWindow && target.QsWindow.window === window;
+    }
+
+    function moduleWidgets(id) {
+        return [];
+    }
+
+    function run(command) {
+        const cmd = String(command || "");
+        if (cmd)
+            Quickshell.execDetached(["sh", "-c", cmd]);
+    }
 }

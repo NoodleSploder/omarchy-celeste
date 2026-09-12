@@ -23,6 +23,11 @@ Item {
     required property var settings
     required property int barSize
 
+    // The full bar height, which is not the widget height: panels use it to work
+    // out where the bar strip is, so clicks there are forwarded to the bar
+    // rather than treated as an outside click that dismisses the panel.
+    property int barTotalSize: root.barSize
+
     // The bar surface that owns this copy, so the owner can pick the instance on
     // the focused monitor when summoning a panel.
     property var hostScreen: null
@@ -50,7 +55,11 @@ Item {
 
     readonly property bool available: root.widgetComponent !== null
 
-    implicitWidth: root.hidden ? 0 : (loader.item ? loader.item.implicitWidth : 0)
+    // 1, not 0: panels position themselves from the anchor's geometry, and a
+    // zero-width anchor gives them nothing to centre on -- the panel then falls
+    // back to the middle of the screen. The same reason the border exclusion
+    // windows are 1x1 rather than 0x0.
+    implicitWidth: root.hidden ? 1 : (loader.item ? loader.item.implicitWidth : 0)
     implicitHeight: root.barSize
     visible: root.available && !root.hidden
     // An anchor-only widget must still be laid out, or its panel has nothing to
@@ -75,7 +84,7 @@ Item {
         pluginId: root.widgetId
         moduleName: root.widgetId
         shell: root.shell
-        barSize: root.barSize
+        barSize: root.barTotalSize
     }
 
     Loader {

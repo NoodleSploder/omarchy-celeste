@@ -45,7 +45,11 @@ QtObject {
             activeWindow: { compact: false, inverted: false, showOnHover: true },
             // Clicking the clock opens this plugin's panel. It is hosted
             // invisibly as an anchor, so it needs no entry in the bar.
-            clock: { background: false, showDate: true, showIcon: true, calendarWidget: "tmn73.calendar" },
+            // Omarchy's calendar popup belongs to omarchy.clock -- its widget is
+            // "the date/time label for the bar, and the host for the calendar
+            // popup". tmn73.calendar is a separate third-party plugin that looks
+            // similar; point calendarWidget at it instead if that is wanted.
+            clock: { background: false, showDate: true, showIcon: true, calendarWidget: "omarchy.clock" },
             // Extra plugins to keep live purely so their panels can be opened.
             anchorWidgets: [],
             // Clicking a status icon opens the matching Omarchy plugin's own

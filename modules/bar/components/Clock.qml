@@ -13,6 +13,18 @@ StyledRect {
 
     signal dashboardRequested(int tab)
 
+    // Scene-coordinate midpoint, so a panel hosted elsewhere in the surface can
+    // still open directly beneath the clock.
+    signal centreChanged(real centre)
+
+    onWidthChanged: root.reportCentre()
+    onXChanged: root.reportCentre()
+    Component.onCompleted: root.reportCentre()
+
+    function reportCentre() {
+        root.centreChanged(root.mapToItem(null, root.width / 2, 0).x);
+    }
+
     readonly property color colour: Colours.palette.m3tertiary
     readonly property int padding: Config.bar.clock.background ? Tokens.padding.medium : Tokens.padding.extraSmall
     readonly property int pointSize: Math.round(Tokens.fontSize.small * 1.1)

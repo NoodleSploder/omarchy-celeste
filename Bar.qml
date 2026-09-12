@@ -63,6 +63,9 @@ Item {
 
     // Live hosted widget instances, keyed by widget id. One entry per monitor,
     // since each bar surface instantiates its own copy.
+    // Where the clock sits, so panels anchored to it open beneath it.
+    property real clockCentre: 0
+
     property var hostedItems: ({})
 
     function registerHosted(id, item) {
@@ -106,6 +109,12 @@ Item {
     // The host calls these to drive a widget's own panel. They must actually
     // open it -- returning a bare true while doing nothing makes shell.summon()
     // report success for a panel that never appeared.
+    //
+    // Open acts on one instance (the focused monitor's), but close and the
+    // is-open test act on ALL of them. A widget hosted as an anchor exists once
+    // per monitor, so asking only the focused copy whether it is open gets the
+    // wrong answer as soon as focus has moved since it opened -- the panel then
+    // reads as closed, every toggle re-opens it, and it can never be dismissed.
     function summonBarWidget(id) {
         const item = root.hostedItemFor(id);
         if (!item || !item.widgetItem || typeof item.widgetItem.open !== "function")
@@ -115,16 +124,27 @@ Item {
     }
 
     function hideBarWidget(id) {
-        const item = root.hostedItemFor(id);
-        if (!item || !item.widgetItem || typeof item.widgetItem.close !== "function")
+        const list = root.hostedItems[String(id || "")];
+        if (!list || list.length === 0)
             return false;
-        item.widgetItem.close();
-        return true;
+        let closed = false;
+        for (const item of list) {
+            if (item.widgetItem && typeof item.widgetItem.close === "function") {
+                item.widgetItem.close();
+                closed = true;
+            }
+        }
+        return closed;
     }
 
     function isBarWidgetOpen(id) {
-        const item = root.hostedItemFor(id);
-        return !!(item && item.widgetItem && item.widgetItem.opened === true);
+        const list = root.hostedItems[String(id || "")];
+        if (!list)
+            return false;
+        for (const item of list)
+            if (item.widgetItem && item.widgetItem.opened === true)
+                return true;
+        return false;
     }
 
     // ------------------------------------------------------------- entries
@@ -285,6 +305,69 @@ Item {
         }
     }
 
+    // Anchor host surfaces.
+    //
+    // Omarchy panels position themselves from `anchorWindow.height`, taking it
+    // to be the bar's height -- Omarchy's own bar is a bar-height window, so
+    // that holds there. Celeste draws its bar inside ONE FULLSCREEN surface, so
+    // hosting an anchor in it reports a bar 1440px tall and the panel opens at
+    // the bottom of the screen.
+    //
+    // So anchors live in their own window instead: full width, exactly bar
+    // height, transparent, and masked to accept no input. Nothing is drawn here;
+    // it exists purely to give hosted panels an honest coordinate frame.
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: anchorSurface
+
+            required property var modelData
+
+            screen: anchorSurface.modelData
+
+            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.namespace: "celeste-anchors"
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+            anchors.top: true
+            anchors.left: true
+            anchors.right: true
+
+            implicitHeight: root.barSize
+            exclusionMode: ExclusionMode.Ignore
+            exclusiveZone: 0
+            color: "transparent"
+            mask: Region {}
+
+            Item {
+                anchors.top: parent.top
+                x: Math.max(0, Math.min(root.clockCentre, anchorSurface.width - 1))
+                width: 1
+                height: root.barSize
+
+                Repeater {
+                    model: root.anchorWidgetIds
+
+                    delegate: BarModules.HostedWidget {
+                        required property string modelData
+
+                        widgetId: modelData
+                        registry: root.barWidgetRegistry
+                        shell: root.shell
+                        settings: ({ hidden: true })
+                        barSize: Tokens.sizes.bar.innerWidth
+                        barTotalSize: root.barSize
+                        hostScreen: anchorSurface.modelData
+
+                        onRegistered: (id, self) => root.registerHosted(id, self)
+                        onUnregistered: (id, self) => root.unregisterHosted(id, self)
+                    }
+                }
+            }
+        }
+    }
+
     Variants {
         model: Quickshell.screens
 
@@ -336,6 +419,8 @@ Item {
             // Which status icon the pointer is over, and where it sits.
             property string popoutName: ""
             property real popoutCentre: 0
+
+
 
             // Closing is delayed so travel between the icon and the panel does
             // not dismiss it mid-move.
@@ -448,33 +533,6 @@ Item {
 
             // Anchor-only hosts: zero-width, invisible, but live so their
             // panels can open and position themselves against this surface.
-            Item {
-                id: anchorHosts
-
-                anchors.top: parent.top
-                anchors.right: parent.right
-                width: 0
-                height: root.barSize
-
-                Repeater {
-                    model: root.anchorWidgetIds
-
-                    delegate: BarModules.HostedWidget {
-                        required property string modelData
-
-                        widgetId: modelData
-                        registry: root.barWidgetRegistry
-                        shell: root.shell
-                        settings: ({ hidden: true })
-                        barSize: Tokens.sizes.bar.innerWidth
-                        hostScreen: panel.modelData
-
-                        onRegistered: (id, self) => root.registerHosted(id, self)
-                        onUnregistered: (id, self) => root.unregisterHosted(id, self)
-                    }
-                }
-            }
-
             BarModules.Popout {
                 id: popout
 
@@ -563,6 +621,7 @@ Item {
 
                 BarComponents.Clock {
                     onDashboardRequested: tab => root.openDashboard(tab)
+                    onCentreChanged: c => root.clockCentre = c
                 }
             }
 
@@ -614,6 +673,7 @@ Item {
                     shell: root.shell
                     settings: modelData
                     barSize: Tokens.sizes.bar.innerWidth
+                    barTotalSize: root.barSize
                     hostScreen: panel.modelData
 
                     onRegistered: (id, self) => root.registerHosted(id, self)
