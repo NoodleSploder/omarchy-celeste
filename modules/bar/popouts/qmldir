@@ -1,0 +1,4 @@
+AudioPopout 1.0 AudioPopout.qml
+NetworkPopout 1.0 NetworkPopout.qml
+BluetoothPopout 1.0 BluetoothPopout.qml
+BatteryPopout 1.0 BatteryPopout.qml

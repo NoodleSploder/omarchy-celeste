@@ -17,6 +17,11 @@ StyledRect {
 
     property color colour: Colours.palette.m3secondary
 
+    // Emitted as the pointer moves across the pill. `name` is the entry id under
+    // the cursor (empty when none), `centre` its x midpoint in bar coordinates,
+    // so the popout can point at the exact glyph rather than the whole pill.
+    signal hoverChanged(string name, real centre)
+
     readonly property int gap: Math.round(Tokens.spacing.medium / 2)
 
     function collapsed(id) {
@@ -39,6 +44,42 @@ StyledRect {
     implicitWidth: row.implicitWidth + Tokens.padding.medium * 2
     implicitHeight: Tokens.sizes.bar.innerWidth
 
+    HoverHandler {
+        id: hover
+
+        onPointChanged: root.updateHover()
+        onHoveredChanged: {
+            if (!hovered)
+                root.hoverChanged("", 0);
+            else
+                root.updateHover();
+        }
+    }
+
+    function updateHover() {
+        if (!hover.hovered) {
+            root.hoverChanged("", 0);
+            return;
+        }
+        const p = hover.point.position;
+        for (let i = 0; i < repeater.count; i++) {
+            const icon = repeater.itemAt(i);
+            if (!icon)
+                continue;
+            const local = root.mapToItem(icon, p.x, p.y);
+            if (local.x >= 0 && local.x <= icon.width) {
+                // null maps to scene coordinates, which for a layer-shell
+                // surface are window coordinates -- the space the popout is
+                // positioned in. Mapping to the immediate parent would report a
+                // few dozen pixels and pin every popout to the left edge.
+                const centre = icon.mapToItem(null, icon.width / 2, 0).x;
+                root.hoverChanged(icon.entryId, centre);
+                return;
+            }
+        }
+        root.hoverChanged("", 0);
+    }
+
     RowLayout {
         id: row
 
@@ -48,6 +89,8 @@ StyledRect {
         spacing: root.gap
 
         Repeater {
+            id: repeater
+
             model: root.items
 
             delegate: MaterialIcon {

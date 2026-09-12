@@ -16,11 +16,13 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Wayland
 import "core"
 import "components"
 import "modules/bar" as BarModules
 import "modules/bar/components" as BarComponents
+import "modules/bar/popouts" as Popouts
 
 Item {
     id: root
@@ -56,45 +58,100 @@ Item {
     // to open the system panels (Super+Ctrl+A/B/W/D/P and the calendar), so they
     // must answer truthfully or summon() logs "no live bar widget".
 
-    property var openWidgets: ({})
+    // Live hosted widget instances, keyed by widget id. One entry per monitor,
+    // since each bar surface instantiates its own copy.
+    property var hostedItems: ({})
 
-    function summonBarWidget(id) {
+    function registerHosted(id, item) {
+        const key = String(id || "");
+        if (!key || !item)
+            return;
+        const next = {};
+        for (const k in root.hostedItems)
+            next[k] = root.hostedItems[k].slice();
+        if (!next[key])
+            next[key] = [];
+        if (next[key].indexOf(item) === -1)
+            next[key].push(item);
+        root.hostedItems = next;
+    }
+
+    function unregisterHosted(id, item) {
         const key = String(id || "");
         if (!key)
-            return false;
+            return;
         const next = {};
-        for (const k in root.openWidgets)
-            next[k] = root.openWidgets[k];
-        next[key] = true;
-        root.openWidgets = next;
+        for (const k in root.hostedItems)
+            next[k] = root.hostedItems[k].filter(i => k !== key || i !== item);
+        root.hostedItems = next;
+    }
+
+    // Prefer the copy on the focused monitor, so a panel opens where the user is
+    // looking rather than always on the first screen.
+    function hostedItemFor(id) {
+        const list = root.hostedItems[String(id || "")];
+        if (!list || list.length === 0)
+            return null;
+        const focused = Hyprland.focusedMonitor;
+        if (focused)
+            for (const item of list)
+                if (item.hostScreen && item.hostScreen.name === focused.name)
+                    return item;
+        return list[0];
+    }
+
+    // The host calls these to drive a widget's own panel. They must actually
+    // open it -- returning a bare true while doing nothing makes shell.summon()
+    // report success for a panel that never appeared.
+    function summonBarWidget(id) {
+        const item = root.hostedItemFor(id);
+        if (!item || !item.widgetItem || typeof item.widgetItem.open !== "function")
+            return false;
+        item.widgetItem.open();
         return true;
     }
 
     function hideBarWidget(id) {
-        const key = String(id || "");
-        if (!(key in root.openWidgets))
+        const item = root.hostedItemFor(id);
+        if (!item || !item.widgetItem || typeof item.widgetItem.close !== "function")
             return false;
-        const next = {};
-        for (const k in root.openWidgets)
-            if (k !== key)
-                next[k] = root.openWidgets[k];
-        root.openWidgets = next;
+        item.widgetItem.close();
         return true;
     }
 
     function isBarWidgetOpen(id) {
-        return root.openWidgets[String(id || "")] === true;
+        const item = root.hostedItemFor(id);
+        return !!(item && item.widgetItem && item.widgetItem.opened === true);
     }
 
     // ------------------------------------------------------------- entries
 
     readonly property var entries: (Config.bar.entries || []).filter(e => e && e.enabled)
 
-    // The dashboard is not built yet. Until it is, the clock gesture is routed
-    // at Omarchy's calendar panel so it does nothing surprising.
+    // Clicking the clock opens the Omarchy calendar panel.
+    //
+    // That panel belongs to a bar-widget plugin and anchors itself to a *live*
+    // widget instance, so the plugin has to be hosted somewhere in this bar.
+    // Add it to bar.entries with "hidden": true to host it purely as an anchor,
+    // without drawing a second clock next to Celeste's own.
+    property string calendarWidgetId: "tmn73.calendar"
+
     function openDashboard(tab) {
+        if (root.toggleHosted(root.calendarWidgetId))
+            return;
+        // Not hosted: ask the shell, which will route back through
+        // summonBarWidget and fail loudly rather than silently doing nothing.
         if (root.shell && typeof root.shell.toggle === "function")
-            root.shell.toggle("tmn73.calendar", "{}");
+            root.shell.toggle(root.calendarWidgetId, "{}");
+    }
+
+    function toggleHosted(id) {
+        const item = root.hostedItemFor(id);
+        if (!item || !item.widgetItem)
+            return false;
+        if (root.isBarWidgetOpen(id))
+            return root.hideBarWidget(id);
+        return root.summonBarWidget(id);
     }
 
     // ------------------------------------------------------------ surfaces
@@ -193,9 +250,40 @@ Item {
             exclusiveZone: 0
             color: "transparent"
 
-            // Only the bar strip accepts input; the frame is click-through.
+            // Input is limited to the bar strip plus, while open, the popout.
+            // Regions union, so the frame stays click-through either way -- and
+            // an open panel must be added or its own controls never receive the
+            // clicks that the mask is busy discarding.
             mask: Region {
                 item: barStrip
+
+                Region {
+                    item: popout
+                    intersection: Intersection.Combine
+                }
+            }
+
+            // Which status icon the pointer is over, and where it sits.
+            property string popoutName: ""
+            property real popoutCentre: 0
+
+            // Closing is delayed so travel between the icon and the panel does
+            // not dismiss it mid-move.
+            Timer {
+                id: popoutCloser
+
+                interval: Tokens.anim.durations.small
+                onTriggered: panel.popoutName = ""
+            }
+
+            function setPopout(name, centre) {
+                if (name) {
+                    popoutCloser.stop();
+                    panel.popoutName = name;
+                    panel.popoutCentre = centre;
+                } else if (!popoutHover.hovered) {
+                    popoutCloser.restart();
+                }
             }
 
             // Declared here rather than on root: the Components below live in
@@ -280,6 +368,74 @@ Item {
                 }
             }
 
+            BarModules.Popout {
+                id: popout
+
+                anchors.top: barStrip.bottom
+                anchorCentre: panel.popoutCentre
+                edgeMargin: root.borderThickness + Tokens.padding.small
+                open: panel.popoutName !== ""
+
+                contentComponent: {
+                    switch (panel.popoutName) {
+                    case "audio":
+                        return audioPopout;
+                    case "microphone":
+                        return micPopout;
+                    case "network":
+                        return networkPopout;
+                    case "bluetooth":
+                        return bluetoothPopout;
+                    case "battery":
+                        return batteryPopout;
+                    }
+                    return null;
+                }
+
+                HoverHandler {
+                    id: popoutHover
+
+                    onHoveredChanged: {
+                        if (hovered)
+                            popoutCloser.stop();
+                        else
+                            panel.setPopout("", 0);
+                    }
+                }
+            }
+
+            Component {
+                id: audioPopout
+
+                Popouts.AudioPopout {}
+            }
+
+            Component {
+                id: micPopout
+
+                Popouts.AudioPopout {
+                    inputMode: true
+                }
+            }
+
+            Component {
+                id: networkPopout
+
+                Popouts.NetworkPopout {}
+            }
+
+            Component {
+                id: bluetoothPopout
+
+                Popouts.BluetoothPopout {}
+            }
+
+            Component {
+                id: batteryPopout
+
+                Popouts.BatteryPopout {}
+            }
+
             Component {
                 id: spacerComponent
 
@@ -313,7 +469,9 @@ Item {
             Component {
                 id: statusIconsComponent
 
-                BarComponents.StatusIcons {}
+                BarComponents.StatusIcons {
+                    onHoverChanged: (name, centre) => panel.setPopout(name, centre)
+                }
             }
 
             Component {
@@ -347,6 +505,10 @@ Item {
                     shell: root.shell
                     settings: modelData
                     barSize: Tokens.sizes.bar.innerWidth
+                    hostScreen: panel.modelData
+
+                    onRegistered: (id, self) => root.registerHosted(id, self)
+                    onUnregistered: (id, self) => root.unregisterHosted(id, self)
                 }
             }
         }

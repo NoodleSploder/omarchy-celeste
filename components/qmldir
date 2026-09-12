@@ -7,3 +7,4 @@ StyledClippingRect 1.0 StyledClippingRect.qml
 StyledText 1.0 StyledText.qml
 MaterialIcon 1.0 MaterialIcon.qml
 CircularProgress 1.0 CircularProgress.qml
+InvertedCorner 1.0 InvertedCorner.qml

@@ -23,6 +23,21 @@ Item {
     required property var settings
     required property int barSize
 
+    // The bar surface that owns this copy, so the owner can pick the instance on
+    // the focused monitor when summoning a panel.
+    property var hostScreen: null
+
+    // Host the widget purely as an anchor: it stays live so its panel can open,
+    // but occupies no width and draws nothing. Useful when Celeste already shows
+    // the same information natively -- a calendar panel without a second clock.
+    readonly property bool hidden: !!(root.settings && root.settings.hidden)
+
+    // The loaded widget, exposed so the owner can call open()/close() on it.
+    readonly property var widgetItem: loader.item
+
+    signal registered(string id, var self)
+    signal unregistered(string id, var self)
+
     readonly property var metadata: root.registry ? root.registry.metadataFor(root.widgetId) : null
 
     readonly property var widgetComponent: {
@@ -35,9 +50,12 @@ Item {
 
     readonly property bool available: root.widgetComponent !== null
 
-    implicitWidth: loader.item ? loader.item.implicitWidth : 0
+    implicitWidth: root.hidden ? 0 : (loader.item ? loader.item.implicitWidth : 0)
     implicitHeight: root.barSize
-    visible: root.available
+    visible: root.available && !root.hidden
+    // An anchor-only widget must still be laid out, or its panel has nothing to
+    // position against; it is merely zero-width and transparent.
+    opacity: root.hidden ? 0 : 1
 
     function injectProps() {
         const target = loader.item;
@@ -71,6 +89,9 @@ Item {
         onLoaded: {
             root.injectProps();
             Qt.callLater(root.injectProps);
+            root.registered(root.widgetId, root);
         }
     }
+
+    Component.onDestruction: root.unregistered(root.widgetId, root)
 }
