@@ -4,7 +4,7 @@
   "name": "Celeste",
   "version": "0.1.0",
   "author": "NoodleSploder",
-  "description": "Material 3 Expressive bar and drawers for Omarchy, inspired by Caelestia",
+  "description": "Material 3 Expressive bar for Omarchy. Native plugin, pure QML, no native code.",
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/NoodleSploder/omarchy-celeste",
   "kinds": [
