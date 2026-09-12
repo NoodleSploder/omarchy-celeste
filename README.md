@@ -56,6 +56,29 @@ inside the shell's import path. To load it in isolation, copy `Commons/` and
 the plugin, and point Quickshell at a `shell.qml` that `Loader`s `plugin/Bar.qml`.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Hosting Omarchy bar widgets
+
+Celeste can render Omarchy's own bar widgets alongside its native entries — add
+the widget's plugin id to `bar.entries`:
+
+```json
+{ "id": "omarchy.clock", "enabled": true }
+```
+
+Any entry id Celeste does not recognise is resolved against the host's widget
+registry, so third-party widgets work the same way.
+
+**Limits.** Omarchy's `Ui/PluginBarApi` lives in the shell tree and is
+constructed by the built-in bar, so a third-party bar cannot hand out a real
+one. Celeste supplies a compatible shim with its own palette; the host's
+internal callbacks are no-ops, so a hosted widget renders and updates but its
+own popouts and tooltips stay inert.
+
+Separately, a plugin that *self-registers* a bar widget (calling
+`barWidgetRegistry.register(...)`) cannot do so under any third-party bar —
+plugins receive a detached read-only snapshot of the registry, which has no
+`register()`. `im0001gt.screens` is one such plugin.
+
 ## Configuration
 
 Celeste reads `~/.config/celeste/shell.json`, falling back to

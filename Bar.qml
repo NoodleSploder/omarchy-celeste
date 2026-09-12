@@ -222,7 +222,10 @@ Item {
                 case "resources":
                     return resourceComponent;
                 default:
-                    return null;
+                    // Not a Celeste entry: treat the id as an Omarchy bar widget
+                    // and let HostedWidget resolve it against the registry. An
+                    // id that matches nothing renders at zero width.
+                    return hostedWidgetComponent;
                 }
             }
 
@@ -265,6 +268,13 @@ Item {
                             asynchronous: entry.entryId !== "workspaces"
 
                             sourceComponent: panel.componentFor(entry.entryId)
+
+                            // HostedWidget needs the whole entry (its id and any
+                            // inline settings); Celeste's own entries ignore it.
+                            onLoaded: {
+                                if (item && "modelData" in item)
+                                    item.modelData = entry.modelData;
+                            }
                         }
                     }
                 }
@@ -322,6 +332,22 @@ Item {
                 id: resourceComponent
 
                 BarComponents.Resource {}
+            }
+
+            Component {
+                id: hostedWidgetComponent
+
+                BarModules.HostedWidget {
+                    // Not `required`: a Loader cannot supply required properties
+                    // to a sourceComponent, so this is assigned in onLoaded.
+                    property var modelData: ({})
+
+                    widgetId: String(modelData.id || "")
+                    registry: root.barWidgetRegistry
+                    shell: root.shell
+                    settings: modelData
+                    barSize: Tokens.sizes.bar.innerWidth
+                }
             }
         }
     }
