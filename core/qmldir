@@ -1,0 +1,6 @@
+# Celeste core singletons. A qmldir is required here: without it a relative
+# directory import resolves no types at all.
+singleton Tokens 1.0 Tokens.qml
+singleton Colours 1.0 Colours.qml
+singleton Config 1.0 Config.qml
+singleton Time 1.0 Time.qml

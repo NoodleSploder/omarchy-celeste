@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "noodlesploder.celeste",
+  "name": "Celeste",
+  "version": "0.1.0",
+  "author": "NoodleSploder",
+  "description": "Material 3 Expressive bar and drawers for Omarchy, inspired by Caelestia",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/NoodleSploder/omarchy-celeste",
+  "kinds": [
+    "bar"
+  ],
+  "entryPoints": {
+    "bar": "Bar.qml"
+  }
+}

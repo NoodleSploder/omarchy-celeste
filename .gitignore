@@ -1,0 +1,9 @@
+# Local probe/test scratch
+/.probe/
+*.qslog
+*.log
+
+# Editor noise
+.idea/
+.vscode/
+*.swp
