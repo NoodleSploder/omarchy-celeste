@@ -11,11 +11,25 @@ import "../../components"
 // the join, so it appears to swell out of the border rather than sit on top of
 // it.
 //
-//   placement "right"  - pinned into the top-right corner, flush against both
-//                        the bar and the right border. Fillets: bar -> panel at
-//                        the top-left, panel -> right border below the right.
-//   placement "centre" - hangs from the bar in the middle of the screen, free on
-//                        both sides. Fillets bridge the bar on both sides.
+//   placement "right"    - pinned into the top-right corner, flush against both
+//                          the bar and the right border. Fillets: bar -> panel at
+//                          the top-left, panel -> right border below the right.
+//   placement "centre"   - hangs from the bar in the middle of the screen, free
+//                          on both sides. Fillets bridge the bar on both sides.
+//   placement "anchored" - same free-on-both-sides visual as "centre", but
+//                          centred under anchorCentre (a bar-relative x, e.g.
+//                          the hovered icon's midpoint) instead of the screen's
+//                          middle, clamped so it never runs off either edge.
+//                          For any row that isn't flush against the right
+//                          border -- the tray, the running-apps row -- "right"
+//                          silently ignores where the icon actually is (it
+//                          never read anchorCentre at all) and just pins to
+//                          the screen edge, which reads as "attached" only by
+//                          coincidence when the row happens to already be
+//                          there. Confirmed by a live report: hovering a tray
+//                          icon mid-bar opened the menu nowhere near the
+//                          cursor, so moving toward it crossed dead space and
+//                          closed it before arriving.
 //
 // The fillets sit OUTSIDE this item's bounds, so the root must never clip. Only
 // the inner content holder does.
@@ -24,6 +38,7 @@ Item {
 
     property bool open: false
     property string placement: "right"
+    property real anchorCentre: 0
     property int borderThickness: 0
     property int radius: Tokens.rounding.extraLarge
     property int filletSize: Config.border.rounding
@@ -31,7 +46,8 @@ Item {
 
     property Component contentComponent: null
 
-    readonly property bool centred: root.placement === "centre"
+    readonly property bool anchored: root.placement === "anchored"
+    readonly property bool centred: root.placement === "centre" || root.anchored
 
     readonly property int contentWidth: contentLoader.item ? contentLoader.item.implicitWidth : 0
     readonly property int contentHeight: contentLoader.item ? contentLoader.item.implicitHeight : 0
@@ -39,9 +55,16 @@ Item {
     readonly property int fullWidth: root.contentWidth + Tokens.padding.large * 2
     readonly property int fullHeight: root.contentHeight + Tokens.padding.large * 2
 
-    x: root.centred
-        ? Math.round(((parent ? parent.width : 0) - root.fullWidth) / 2)
-        : (parent ? parent.width : 0) - root.borderThickness - root.fullWidth
+    x: {
+        const parentWidth = parent ? parent.width : 0;
+        if (root.anchored)
+            return Math.max(root.borderThickness, Math.min(
+                root.anchorCentre - root.fullWidth / 2,
+                parentWidth - root.borderThickness - root.fullWidth));
+        return root.placement === "centre"
+            ? Math.round((parentWidth - root.fullWidth) / 2)
+            : parentWidth - root.borderThickness - root.fullWidth;
+    }
 
     width: root.fullWidth
     // Height is what animates: the panel extends downwards out of the bar.

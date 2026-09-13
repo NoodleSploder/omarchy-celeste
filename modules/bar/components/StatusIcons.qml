@@ -22,8 +22,9 @@ StyledRect {
     // so the popout can point at the exact glyph rather than the whole pill.
     signal hoverChanged(string name, real centre)
 
-    // Clicking an icon opens the owning Omarchy plugin's own panel.
-    signal iconClicked(string name)
+    // The containing Celeste surface owns the connected panel. Pass the icon's
+    // centre as well, so a click can toggle the same anchored popout as hover.
+    signal iconClicked(string name, real centre)
 
     readonly property int gap: Math.round(Tokens.spacing.medium / 2)
 
@@ -49,9 +50,10 @@ StyledRect {
 
     TapHandler {
         onSingleTapped: {
-            const name = root.entryAt(hover.point.position);
-            if (name)
-                root.iconClicked(name);
+            const icon = root.iconAt(hover.point.position);
+            if (icon)
+                root.iconClicked(icon.entryId,
+                    icon.mapToItem(null, icon.width / 2, 0).x);
         }
     }
 

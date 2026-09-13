@@ -84,6 +84,7 @@ QtObject {
                 { id: "spacer", enabled: true },
                 { id: "tray", enabled: true },
                 { id: "clock", enabled: true },
+                { id: "runningApps", enabled: true },
                 { id: "statusIcons", enabled: true },
                 { id: "power", enabled: true }
             ],

@@ -1,3 +1,4 @@
+singleton Apps 1.0 Apps.qml
 singleton Audio 1.0 Audio.qml
 singleton Battery 1.0 Battery.qml
 singleton Net 1.0 Net.qml

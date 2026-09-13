@@ -66,6 +66,11 @@ Item {
     // Where the clock sits, so panels anchored to it open beneath it.
     property real clockCentre: 0
 
+    // Full Omarchy panels are hosted invisibly. Keep an anchor per output and
+    // per panel id, rather than sharing the clock's x coordinate: a shared
+    // coordinate is wrong as soon as a second monitor reports its clock.
+    property var statusPanelAnchors: ({})
+
     property var hostedItems: ({})
 
     function registerHosted(id, item) {
@@ -209,13 +214,62 @@ Item {
         return mon ? String(mon.name) : "";
     }
 
-    // Clicking a status icon opens the owning Omarchy plugin's real panel.
-    function openStatusPanel(name) {
+    // Clicking a status icon toggles its full Omarchy panel. Hovering uses the
+    // same panel, but only ever opens it: moving across an already-open icon
+    // must not immediately close the mixer beneath the pointer.
+    function statusPanelId(name) {
         const panels = Config.bar.statusIconPanels || ({});
-        const id = panels[String(name)] || "";
+        return panels[String(name)] || "";
+    }
+
+    function closeOtherStatusPanels(keepId) {
+        const panels = Config.bar.statusIconPanels || ({});
+        const closed = {};
+        for (const key in panels) {
+            const id = panels[key] || "";
+            if (id && id !== keepId && !closed[id]) {
+                root.hideBarWidget(id);
+                closed[id] = true;
+            }
+        }
+    }
+
+    function setStatusPanelAnchor(name, screenName, centre) {
+        const id = root.statusPanelId(name);
+        if (!id || !screenName)
+            return;
+        const next = {};
+        for (const key in root.statusPanelAnchors)
+            next[key] = root.statusPanelAnchors[key];
+        next[`${screenName}:${id}`] = Math.max(0, Number(centre) || 0);
+        root.statusPanelAnchors = next;
+    }
+
+    function panelAnchorCentre(screenName, panelId) {
+        const value = root.statusPanelAnchors[`${screenName}:${panelId}`];
+        return value === undefined ? root.clockCentre : value;
+    }
+
+    function openStatusPanel(name) {
+        const id = root.statusPanelId(name);
         if (!id)
             return false;
-        return root.toggleHosted(id);
+        if (root.isBarWidgetOpen(id))
+            return root.hideBarWidget(id);
+        root.closeOtherStatusPanels(id);
+        return root.summonBarWidget(id);
+    }
+
+    function showStatusPanelOnHover(name) {
+        const id = root.statusPanelId(name);
+        if (!id)
+            return false;
+        root.closeOtherStatusPanels(id);
+        // This is deliberately not toggleHosted(): StatusIcons emits hover
+        // updates continuously, and a toggle would flicker the real panel.
+        if (!root.isBarWidgetOpen(id))
+            return root.summonBarWidget(id);
+        return true;
     }
 
     function toggleHosted(id) {
@@ -225,6 +279,33 @@ Item {
         if (root.isBarWidgetOpen(id))
             return root.hideBarWidget(id);
         return root.summonBarWidget(id);
+    }
+
+    function openOmarchyMenu() {
+        if (!root.shell || typeof root.shell.toggle !== "function")
+            return false;
+        root.shell.toggle("omarchy.menu", JSON.stringify({ menu: "root" }));
+        return true;
+    }
+
+    function openOmarchyThemeSwitcher() {
+        // The picker is a blocking request/reply conversation with Omarchy's
+        // image-selector overlay. Keep the process alive here until the user
+        // picks or cancels; a detached command can be reaped before it gets
+        // the selector's reply on some Quickshell versions.
+        if (!themeSwitcher.running)
+            themeSwitcher.running = true;
+        return true;
+    }
+
+    Process {
+        id: themeSwitcher
+
+        command: [
+            "bash",
+            "-c",
+            "theme=$(omarchy-theme-switcher); [[ -n \"$theme\" ]] && omarchy-theme-set \"$theme\" >/dev/null 2>&1"
+        ]
     }
 
     // ------------------------------------------------------- external control
@@ -242,6 +323,13 @@ Item {
         onPressed: OverviewState.toggle()
     }
 
+    GlobalShortcut {
+        appid: "celeste"
+        name: "menu"
+        description: "Toggle the Omarchy menu"
+        onPressed: root.openOmarchyMenu()
+    }
+
     IpcHandler {
         target: "calendar"
 
@@ -251,6 +339,35 @@ Item {
 
         function close(): void {
             root.closeCalendar();
+        }
+    }
+
+    IpcHandler {
+        target: "menu"
+
+        function toggle(): void {
+            root.openOmarchyMenu();
+        }
+
+        function open(): void {
+            root.openOmarchyMenu();
+        }
+
+        function close(): void {
+            if (root.shell && typeof root.shell.hide === "function")
+                root.shell.hide("omarchy.menu");
+        }
+    }
+
+    IpcHandler {
+        target: "theme"
+
+        function open(): void {
+            root.openOmarchyThemeSwitcher();
+        }
+
+        function toggle(): void {
+            root.openOmarchyThemeSwitcher();
         }
     }
 
@@ -377,29 +494,30 @@ Item {
             color: "transparent"
             mask: Region {}
 
-            Item {
-                anchors.top: parent.top
-                x: Math.max(0, Math.min(root.clockCentre, anchorSurface.width - 1))
-                width: 1
-                height: root.barSize
+            Repeater {
+                model: root.anchorWidgetIds
 
-                Repeater {
-                    model: root.anchorWidgetIds
+                delegate: BarModules.HostedWidget {
+                    required property string modelData
 
-                    delegate: BarModules.HostedWidget {
-                        required property string modelData
+                    // The first-party KeyboardPanel reads this item's geometry
+                    // to place itself. Bind it to the hovered icon on this
+                    // output, falling back to the clock for keyboard summons.
+                    x: Math.max(0, Math.min(
+                        root.panelAnchorCentre(String(anchorSurface.modelData.name), modelData),
+                        anchorSurface.width - 1))
+                    y: 0
 
-                        widgetId: modelData
-                        registry: root.barWidgetRegistry
-                        shell: root.shell
-                        settings: ({ hidden: true })
-                        barSize: Tokens.sizes.bar.innerWidth
-                        barTotalSize: root.barSize
-                        hostScreen: anchorSurface.modelData
+                    widgetId: modelData
+                    registry: root.barWidgetRegistry
+                    shell: root.shell
+                    settings: ({ hidden: true })
+                    barSize: Tokens.sizes.bar.innerWidth
+                    barTotalSize: root.barSize
+                    hostScreen: anchorSurface.modelData
 
-                        onRegistered: (id, self) => root.registerHosted(id, self)
-                        onUnregistered: (id, self) => root.unregisterHosted(id, self)
-                    }
+                    onRegistered: (id, self) => root.registerHosted(id, self)
+                    onUnregistered: (id, self) => root.unregisterHosted(id, self)
                 }
             }
         }
@@ -503,6 +621,8 @@ Item {
                     return activeWindowComponent;
                 case "statusIcons":
                     return statusIconsComponent;
+                case "runningApps":
+                    return runningAppsComponent;
                 case "tray":
                     return trayComponent;
                 case "media":
@@ -613,11 +733,22 @@ Item {
 
                 anchors.top: barStrip.bottom
                 z: 3
-                placement: "right"
+                // "right" only reads correctly for the icons actually flush
+                // against the right border (audio/network/bluetooth/battery/
+                // statusIcons). Anything living elsewhere on the bar --
+                // tray, running apps -- has to follow the icon that opened
+                // it instead, or the panel appears nowhere near the cursor.
+                placement: (panel.popoutName.indexOf("app:") === 0 || panel.popoutName.indexOf("tray:") === 0)
+                    ? "anchored" : "right"
+                anchorCentre: panel.popoutCentre
                 borderThickness: root.borderThickness
                 open: panel.popoutName !== ""
 
                 contentComponent: {
+                    if (panel.popoutName.indexOf("app:") === 0)
+                        return appWindowsPopout;
+                    if (panel.popoutName.indexOf("tray:") === 0)
+                        return trayMenuPopout;
                     switch (panel.popoutName) {
                     case "audio":
                         return audioPopout;
@@ -678,6 +809,22 @@ Item {
             }
 
             Component {
+                id: appWindowsPopout
+
+                Popouts.AppWindowsPopout {
+                    appClass: panel.popoutName.slice(4)
+                }
+            }
+
+            Component {
+                id: trayMenuPopout
+
+                Popouts.TrayMenuPopout {
+                    itemId: panel.popoutName.slice(5)
+                }
+            }
+
+            Component {
                 id: spacerComponent
 
                 Item {}
@@ -716,15 +863,58 @@ Item {
                 id: statusIconsComponent
 
                 BarComponents.StatusIcons {
+                    // System panels deliberately stay inside Celeste's full
+                    // screen surface. That gives them the same downward grow
+                    // animation and concave border joins as the calendar.
                     onHoverChanged: (name, centre) => panel.setPopout(name, centre)
-                    onIconClicked: name => root.openStatusPanel(name)
+                    onIconClicked: (name, centre) => {
+                        if (panel.popoutName === name) {
+                            panel.popoutName = "";
+                        } else {
+                            panel.popoutName = name;
+                            panel.popoutCentre = centre;
+                        }
+                    }
+                }
+            }
+
+            Component {
+                id: runningAppsComponent
+
+                BarComponents.RunningApps {
+                    // Same border-attached popout as statusIconsComponent, just
+                    // keyed by "app:<class>" so the switch in contentComponent
+                    // can tell the two families of popout apart.
+                    onHoverChanged: (appClass, centre) => panel.setPopout(appClass ? "app:" + appClass : "", centre)
+                    onIconClicked: (appClass, centre) => {
+                        const name = "app:" + appClass;
+                        if (panel.popoutName === name) {
+                            panel.popoutName = "";
+                        } else {
+                            panel.popoutName = name;
+                            panel.popoutCentre = centre;
+                        }
+                    }
                 }
             }
 
             Component {
                 id: trayComponent
 
-                BarComponents.Tray {}
+                BarComponents.Tray {
+                    // Same border-attached popout as statusIconsComponent /
+                    // runningAppsComponent, keyed by "tray:<itemId>".
+                    onHoverChanged: (itemId, centre) => panel.setPopout(itemId ? "tray:" + itemId : "", centre)
+                    onIconClicked: (itemId, centre) => {
+                        const name = "tray:" + itemId;
+                        if (panel.popoutName === name) {
+                            panel.popoutName = "";
+                        } else {
+                            panel.popoutName = name;
+                            panel.popoutCentre = centre;
+                        }
+                    }
+                }
             }
 
             Component {
