@@ -28,13 +28,30 @@ StyledRect {
 
     readonly property int gap: Tokens.spacing.small
 
+    // See the identical block in StatusIcons.qml -- both pills opt into the
+    // same hover/click-to-expand behaviour, toggled independently from the
+    // settings panel's Top Bar page (Config.bar.collapse).
+    readonly property bool collapsible: Config.bar.collapse.runningApps === true
+    readonly property bool expanded: !root.collapsible || hover.hovered
+
     color: Colours.tPalette.m3surfaceContainer
     radius: Tokens.rounding.full
     clip: true
 
-    implicitWidth: root.groups.length > 0 ? row.implicitWidth + Tokens.padding.medium * 2 : 0
+    implicitWidth: root.groups.length === 0
+        ? 0
+        : root.collapsible
+            ? (root.expanded ? row.implicitWidth + Tokens.padding.medium * 2 : root.implicitHeight)
+            : row.implicitWidth + Tokens.padding.medium * 2
     implicitHeight: Tokens.sizes.bar.innerWidth
     visible: root.groups.length > 0
+
+    Behavior on implicitWidth {
+        enabled: root.collapsible
+        Anim {
+            type: Anim.FastSpatial
+        }
+    }
 
     function iconAt(point) {
         for (let i = 0; i < repeater.count; i++) {
@@ -81,6 +98,26 @@ StyledRect {
         }
     }
 
+    // The single glyph shown while collapsed -- "directions_run", the
+    // literal running-figure Material Symbol.
+    //
+    // m3onSurface, not m3onSurfaceVariant: confirmed live (grim screenshot +
+    // pixel sampling) that the glyph rendered but was nearly invisible at
+    // normal size against this pill's background -- the exact same
+    // low-contrast trap fixed on StatusIcons.qml's own collapsed glyph, see
+    // its comment.
+    MaterialIcon {
+        anchors.centerIn: parent
+        visible: root.collapsible && !root.expanded
+        opacity: root.collapsible && !root.expanded ? 1 : 0
+        text: "directions_run"
+        color: Colours.palette.m3onSurface
+
+        Behavior on opacity {
+            CAnim {}
+        }
+    }
+
     RowLayout {
         id: row
 
@@ -88,6 +125,11 @@ StyledRect {
         anchors.left: parent.left
         anchors.leftMargin: Tokens.padding.medium
         spacing: root.gap
+        // No Behavior here -- see the identical comment on StatusIcons.qml's
+        // own row. An independently-timed opacity fade racing implicitWidth's
+        // Anim.FastSpatial reproduced the exact "widened but blank" flicker
+        // already documented and fixed for the side panel.
+        opacity: root.expanded ? 1 : 0
 
         Repeater {
             id: repeater

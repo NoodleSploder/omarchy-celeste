@@ -45,12 +45,27 @@ StyledRect {
     readonly property var items: (Config.bar.statusIcons || [])
         .filter(e => e && e.enabled && !root.collapsed(e.id))
 
+    // See the identical block in RunningApps.qml -- both pills opt into the
+    // same hover/click-to-expand behaviour, toggled independently from the
+    // settings panel's Top Bar page (Config.bar.collapse).
+    readonly property bool collapsible: Config.bar.collapse.statusIcons === true
+    readonly property bool expanded: !root.collapsible || hover.hovered
+
     color: Colours.tPalette.m3surfaceContainer
     radius: Tokens.rounding.full
     clip: true
 
-    implicitWidth: row.implicitWidth + Tokens.padding.medium * 2
+    implicitWidth: root.collapsible
+        ? (root.expanded ? row.implicitWidth + Tokens.padding.medium * 2 : root.implicitHeight)
+        : row.implicitWidth + Tokens.padding.medium * 2
     implicitHeight: Tokens.sizes.bar.innerWidth
+
+    Behavior on implicitWidth {
+        enabled: root.collapsible
+        Anim {
+            type: Anim.FastSpatial
+        }
+    }
 
     TapHandler {
         onSingleTapped: {
@@ -105,6 +120,30 @@ StyledRect {
         root.hoverChanged(icon.entryId, icon.mapToItem(null, icon.width / 2, 0).x);
     }
 
+    // The single glyph shown while collapsed. "tune" reads as a generic
+    // system-controls icon without colliding with the left panel's own gear
+    // glyph ("settings"), which means something different (Celeste's own
+    // settings panel).
+    //
+    // m3onSurface, not root.colour (m3secondary): confirmed live with a
+    // grim screenshot that the glyph rendered but was invisible at normal
+    // size -- m3secondary sits too close to the pill's own background in
+    // this theme, the same low-contrast trap CLAUDE.md already documents for
+    // the notifications drawer's critical-row stripe. Caught by sampling
+    // actual pixel colours inside the circle (no glyph-coloured pixels at
+    // all), not by eyeballing a thumbnail.
+    MaterialIcon {
+        anchors.centerIn: parent
+        visible: root.collapsible && !root.expanded
+        opacity: root.collapsible && !root.expanded ? 1 : 0
+        text: "tune"
+        color: Colours.palette.m3onSurface
+
+        Behavior on opacity {
+            CAnim {}
+        }
+    }
+
     RowLayout {
         id: row
 
@@ -112,6 +151,15 @@ StyledRect {
         anchors.left: parent.left
         anchors.leftMargin: Tokens.padding.medium
         spacing: root.gap
+        // No Behavior here, deliberately: an independently-timed opacity
+        // fade racing implicitWidth's own Anim.FastSpatial is exactly the
+        // flicker bug already documented (and fixed the same way) for the
+        // side panel -- confirmed live here too, a grim screenshot caught
+        // the pill fully widened by hover but still faded to ~0 opacity, so
+        // it read as a blank pill. Width + clip alone does the reveal now:
+        // opacity snaps instantly, so content is never out of sync with how
+        // much of the row is actually un-clipped.
+        opacity: root.expanded ? 1 : 0
 
         Repeater {
             id: repeater
