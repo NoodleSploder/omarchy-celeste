@@ -57,6 +57,13 @@ QtObject {
             // full mixer, the network list, the device list. Each is hosted
             // invisibly as an anchor. Set an entry to "" to fall back to
             // Celeste's built-in hover popout only.
+            //
+            // Declared here but Bar.qml's statusIconsComponent never actually
+            // reads this map -- audio/microphone/network/bluetooth/battery
+            // (and now agents too, see CLAUDE.md's "AI usage icon" entry) all
+            // got full Celeste-native popout reimplementations instead, so
+            // this is dormant, kept only so a future pass can switch one over
+            // deliberately -- see roadmap item 2.
             statusIconPanels: {
                 audio: "omarchy.audio",
                 microphone: "omarchy.audio",
@@ -76,22 +83,46 @@ QtObject {
                 showWindows: false,
                 showWindowsOnSpecialWorkspaces: false
             },
+            // workspaces + clock sit together between the two spacers so
+            // they're the group centred in the bar (matches Caelestia's own
+            // default shell.json, which centres workspaces/clock/media/
+            // resources as a group and keeps activeWindow on the far left,
+            // beside the logo) -- an earlier pass here had activeWindow
+            // between the spacers instead, which put the workspace selector
+            // off to the left next to the logo instead of centred.
             entries: [
                 { id: "logo", enabled: true },
-                { id: "workspaces", enabled: true },
-                { id: "spacer", enabled: true },
                 { id: "activeWindow", enabled: true },
                 { id: "spacer", enabled: true },
-                { id: "tray", enabled: true },
+                { id: "workspaces", enabled: true },
                 { id: "clock", enabled: true },
+                { id: "spacer", enabled: true },
+                { id: "plugins", enabled: true },
+                { id: "tray", enabled: true },
                 { id: "runningApps", enabled: true },
                 { id: "statusIcons", enabled: true },
                 { id: "power", enabled: true }
             ],
             statusIcons: [
-                { id: "lockStatus", enabled: true },
+                // Two independent entries, not one shared "lockStatus" slot:
+                // caps and num lock can both be on at once, and a single
+                // slot could only ever show one of them (whichever the
+                // ternary preferred) -- see StatusIcons.qml's collapsed()/
+                // text logic.
+                { id: "capsLock", enabled: true },
+                { id: "numLock", enabled: true },
                 { id: "audio", enabled: true },
                 { id: "microphone", enabled: true },
+                // Claude Code / Codex / Fireworks usage -- see
+                // modules/bar/popouts/AgentsPopout.qml and
+                // services/AgentUsage.qml. Got a full Celeste-native popout
+                // like audio/network/etc.: an earlier pass hosted
+                // omarchy.agents' own real panel as an anchor instead, which
+                // worked for data but not looks (that panel's border/corners
+                // come from a shared Omarchy Ui component this repo cannot
+                // restyle without changing it for every Omarchy panel on the
+                // system) -- see CLAUDE.md's "AI usage icon" entry.
+                { id: "agents", enabled: true },
                 { id: "kbLayout", enabled: false },
                 { id: "network", enabled: true },
                 { id: "bluetooth", enabled: true },

@@ -1,3 +1,5 @@
 Border 1.0 Border.qml
 BarApiShim 1.0 BarApiShim.qml
 HostedWidget 1.0 HostedWidget.qml
+Popout 1.0 Popout.qml
+PluginsStrip 1.0 PluginsStrip.qml

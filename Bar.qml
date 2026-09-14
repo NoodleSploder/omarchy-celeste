@@ -25,6 +25,9 @@ import "modules/bar" as BarModules
 import "modules/bar/components" as BarComponents
 import "modules/bar/popouts" as Popouts
 import "modules/overview" as OverviewModule
+import "modules/menu" as MenuModule
+import "modules/sidepanel" as SidePanelModule
+import "modules/settings" as SettingsModule
 import "services"
 
 Item {
@@ -156,6 +159,18 @@ Item {
 
     readonly property var entries: (Config.bar.entries || []).filter(e => e && e.enabled)
 
+    // Opens/closes a plugin from the Plugins bar strip (see
+    // services/PluginCatalog.qml for why the enabled-plugins list itself
+    // isn't sourced from root.pluginRegistry -- that object is scoped to
+    // Celeste's own manifest only, not a catalogue of everything installed).
+    // shell.toggle() is the same general-purpose invocation already used for
+    // the calendar's fallback path above, and works regardless of whether
+    // the target plugin is hosted anywhere in this bar.
+    function togglePlugin(id) {
+        if (root.shell && typeof root.shell.toggle === "function")
+            root.shell.toggle(id, "{}");
+    }
+
     // Clicking the clock opens the Omarchy calendar panel.
     //
     // That panel belongs to a bar-widget plugin and anchors itself to a *live*
@@ -212,6 +227,50 @@ Item {
     function focusedScreenName() {
         const mon = Hyprland.focusedMonitor;
         return mon ? String(mon.name) : "";
+    }
+
+    // Keeps Hyprland's `lastIpcObject` snapshots current.
+    //
+    // Quickshell tracks workspaces/toplevels/monitors as objects, but the
+    // detail fields hanging off `lastIpcObject` -- a workspace's window
+    // COUNT, its monitor, a toplevel's class -- come from a full `hyprctl -j`
+    // query, and nothing re-runs that query on its own. Anything reading them
+    // therefore keeps showing whatever was true when the shell started: the
+    // workspace dots were stuck on the occupancy they had at launch, filling
+    // in only on restart.
+    //
+    // Ported from the Caelestia backup's services/Hypr.qml, which hits the
+    // same wall and solves it the same way. The event names are gated rather
+    // than refreshing on everything, since Hyprland emits these constantly;
+    // "v2" variants are skipped because they duplicate the plain event.
+    //
+    // Root scope on purpose: this Item is instantiated once (the per-monitor
+    // surfaces come from the Variants below), so there is exactly one
+    // refresher rather than one per screen re-querying the same state.
+    Connections {
+        target: Hyprland
+
+        function onRawEvent(event) {
+            const n = event.name;
+            if (n.endsWith("v2"))
+                return;
+
+            if (["openwindow", "closewindow", "movewindow"].includes(n)) {
+                // The occupancy case: a window appearing or leaving changes a
+                // workspace's count, so both lists have to be re-read.
+                Hyprland.refreshToplevels();
+                Hyprland.refreshWorkspaces();
+            } else if (["workspace", "moveworkspace", "activespecial", "focusedmon"].includes(n)) {
+                Hyprland.refreshWorkspaces();
+                Hyprland.refreshMonitors();
+            } else if (n.includes("mon")) {
+                Hyprland.refreshMonitors();
+            } else if (n.includes("workspace")) {
+                Hyprland.refreshWorkspaces();
+            } else if (n.includes("window") || n.includes("group") || ["pin", "fullscreen", "changefloatingmode", "minimize"].includes(n)) {
+                Hyprland.refreshToplevels();
+            }
+        }
     }
 
     // Clicking a status icon toggles its full Omarchy panel. Hovering uses the
@@ -281,10 +340,13 @@ Item {
         return root.summonBarWidget(id);
     }
 
+    // Renders Omarchy's own menu data (services/OmarchyMenu.qml) in Celeste's
+    // own border-attached panel instead of toggling Omarchy's native
+    // omarchy.menu plugin -- same SUPER+Space keybind and the same items,
+    // grown up from the bottom border like Caelestia's launcher instead of
+    // Omarchy's floating KeyboardPanel.
     function openOmarchyMenu() {
-        if (!root.shell || typeof root.shell.toggle !== "function")
-            return false;
-        root.shell.toggle("omarchy.menu", JSON.stringify({ menu: "root" }));
+        OmarchyMenu.toggle(root.focusedScreenName());
         return true;
     }
 
@@ -535,7 +597,53 @@ Item {
 
             WlrLayershell.layer: WlrLayer.Top
             WlrLayershell.namespace: "celeste-bar"
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            // OnDemand, not None: this surface now hosts real text input (the
+            // menu's search box, and NetworkPopout's Wi-Fi password field,
+            // which had the same defect already -- neither could ever
+            // actually receive a keystroke under None, silently, since a QML
+            // `focus: true` binding has no effect on Wayland-level keyboard
+            // focus at all). OnDemand only takes focus when something inside
+            // actually wants it, so this is a no-op for every other bar
+            // surface interaction.
+            //
+            // OnDemand is not enough on its own for the menu, though.
+            // "On demand" means the compositor hands this surface focus when
+            // the user interacts with it -- a click. Summoned by a keybind
+            // instead, with a real window already focused, Hyprland leaves
+            // focus where it is and every keystroke goes to that window:
+            // reproduced exactly (focus Chromium, SUPER+Space, type, watch
+            // the text land in the browser while the menu's own cursor sits
+            // there blinking, because a QML forceActiveFocus() only claims
+            // focus WITHIN the surface).
+            //
+            // Omarchy's own Ui/KeyboardPanel.qml hits this and solves it by
+            // priming with Exclusive -- which does take focus, including for
+            // an ALREADY-MAPPED surface like this one (the bar never unmaps,
+            // so there is no map-time grant to rely on) -- then settling back
+            // to OnDemand a beat later. Exclusive must not be held: it makes
+            // Hyprland route every pointer event to this surface regardless
+            // of which output the cursor is over, which would break clicks on
+            // other monitors. 75ms matches KeyboardPanel's own prime.
+            WlrLayershell.keyboardFocus: panel.menuOpen
+                ? (panel.menuFocusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
+                : WlrKeyboardFocus.OnDemand
+
+            property bool menuFocusPrimed: false
+
+            onMenuOpenChanged: {
+                panel.menuFocusPrimed = false;
+                if (panel.menuOpen)
+                    menuFocusPrime.restart();
+                else
+                    menuFocusPrime.stop();
+            }
+
+            Timer {
+                id: menuFocusPrime
+
+                interval: 75
+                onTriggered: panel.menuFocusPrimed = true
+            }
 
             anchors.top: true
             anchors.left: true
@@ -560,7 +668,11 @@ Item {
             // the overview cannot be handled by nulling the region's item; the
             // mask property itself has to go away, since an unset mask is what
             // means "the whole surface accepts input".
-            mask: (OverviewState.open || panel.calendarOpen) ? null : panel.barRegion
+            // The menu joins this list for the same reason the calendar is in
+            // it: click-outside-to-close needs the surface to actually accept
+            // a click outside the bar strip, and barRegion by definition
+            // discards exactly those.
+            mask: (OverviewState.open || panel.calendarOpen || panel.menuOpen || panel.settingsOpen) ? null : panel.barRegion
 
             property Region barRegion: Region {
                 item: barStrip
@@ -574,10 +686,41 @@ Item {
                     item: calendarPopout
                     intersection: Intersection.Combine
                 }
+
+                Region {
+                    item: menuPanel
+                    intersection: Intersection.Combine
+                }
+
+                Region {
+                    item: sidePanel
+                    intersection: Intersection.Combine
+                }
+
+                Region {
+                    item: pluginsStrip
+                    intersection: Intersection.Combine
+                }
+
+                Region {
+                    item: menuHotzone
+                    intersection: Intersection.Combine
+                }
+
+                Region {
+                    item: settingsPanel
+                    intersection: Intersection.Combine
+                }
             }
 
             readonly property bool calendarOpen:
                 root.calendarScreen !== "" && root.calendarScreen === String(panel.modelData.name)
+
+            readonly property bool menuOpen:
+                OmarchyMenu.open && OmarchyMenu.screenName === String(panel.modelData.name)
+
+            readonly property bool settingsOpen:
+                SettingsPanel.open && SettingsPanel.screenName === String(panel.modelData.name)
 
             // Which status icon the pointer is over, and where it sits.
             property string popoutName: ""
@@ -623,6 +766,8 @@ Item {
                     return statusIconsComponent;
                 case "runningApps":
                     return runningAppsComponent;
+                case "plugins":
+                    return pluginsComponent;
                 case "tray":
                     return trayComponent;
                 case "media":
@@ -652,6 +797,124 @@ Item {
                 borderBottom: root.borderThickness
                 borderTop: root.barHidden ? root.borderThickness : root.barSize
                 radius: root.borderRounding
+            }
+
+            // Clicking anywhere off the menu dismisses it. MenuPanel swallows
+            // presses that land on itself (see the catch-all MouseArea in
+            // MenuPanel.qml), so this only ever sees clicks that really are
+            // outside it.
+            //
+            // z 10, not 0 like the calendar's closer below: that one sits
+            // under barStrip so the bar keeps working while the calendar is
+            // open, which for a launcher would mean clicking a status icon
+            // opens its popout with the menu still standing behind it -- two
+            // panels at once. Above the bar (but below menuPanel and
+            // sidePanel at 11), the first click dismisses and the second does
+            // the thing, which is how every launcher behaves.
+            MouseArea {
+                anchors.fill: parent
+                z: 10
+                enabled: panel.menuOpen
+                visible: panel.menuOpen
+                acceptedButtons: Qt.AllButtons
+                onPressed: OmarchyMenu.close()
+            }
+
+            // Only the monitor OmarchyMenu.show() captured shows it -- see
+            // the comment on OmarchyMenu.screenName for why that's a captured
+            // value rather than a live "am I focused" binding.
+            MenuModule.MenuPanel {
+                id: menuPanel
+
+                // No anchors.fill here: MenuPanel positions itself (bottom +
+                // horizontal-center) against whatever it's parented to, which
+                // just needs to span this surface -- an external anchors.fill
+                // would fight its own internal anchors.
+                z: 11
+                borderThickness: root.borderThickness
+                open: panel.menuOpen
+                contentComponent: menuContent
+            }
+
+            Component {
+                id: menuContent
+
+                MenuModule.MenuContent {}
+            }
+
+            // Hover hotzone for the launcher: the segment of the BOTTOM
+            // border directly under where MenuPanel opens, matching its
+            // width. Same reasoning as the side panel's edge strip -- it
+            // stays within the border, which the exclusion windows above
+            // already reserve, so hovering it costs no app area.
+            //
+            // z 11 puts it above the click-outside closer (z 10) so that
+            // closer can't shadow it while the menu is open. It holds only a
+            // HoverHandler, which doesn't consume presses, so a click here
+            // still falls through to the closer.
+            Item {
+                id: menuHotzone
+
+                z: 11
+                anchors.bottom: parent.bottom
+                anchors.horizontalCenter: parent.horizontalCenter
+                // The launcher's own width. MenuPanel can't be measured while
+                // it's shut -- its content Loader is inactive then, so it
+                // reports bare padding -- and this is the token MenuContent
+                // pins itself to, so the two stay the same width by
+                // construction.
+                width: Tokens.sizes.launcher.itemWidth + Tokens.padding.large * 2
+                // The floor only matters if borders are configured off, where
+                // borderThickness is 0 and the strip would vanish entirely.
+                height: Math.max(root.borderThickness, Config.border.minThickness)
+
+                HoverHandler {
+                    id: menuHotzoneHover
+
+                    onHoveredChanged: {
+                        if (menuHotzoneHover.hovered)
+                            menuHotzoneDwell.restart();
+                        else
+                            menuHotzoneDwell.stop();
+                    }
+                }
+
+                // Brushing past the screen edge shouldn't summon a launcher
+                // that takes keyboard focus, so the pointer has to settle
+                // here first.
+                Timer {
+                    id: menuHotzoneDwell
+
+                    interval: 250
+                    onTriggered: {
+                        // show() resets the route stack and query, so calling
+                        // it on a menu that's already up would throw away
+                        // whatever the user had navigated to.
+                        if (!panel.menuOpen)
+                            OmarchyMenu.show(String(panel.modelData.name));
+                    }
+                }
+            }
+
+            // Screen-targeted, like the menu and the calendar: one monitor
+            // shows this at a time, chosen by SidePanel.screenName (the
+            // hovered screen, or the focused one for the reactive
+            // volume/brightness path). Caelestia's own OSD does appear on
+            // every screen at once and Celeste matched that originally, but
+            // four copies of the sliders/session/notification drawer on a
+            // multi-monitor desk is not what was wanted here.
+            SidePanelModule.SidePanel {
+                id: sidePanel
+
+                screen: panel.modelData
+                borderThickness: root.borderThickness
+                // Same value BarModules.Border uses for borderTop above: the
+                // bar IS the top border while it's shown, so the side panel
+                // treats it as the top edge of its usable area and never
+                // draws over it. Follows barHidden for the same reason the
+                // border does -- hidden bar, space comes back.
+                topInset: root.barHidden ? root.borderThickness : root.barSize
+                z: 11
             }
 
             Item {
@@ -697,6 +960,20 @@ Item {
                 }
             }
 
+            // Grows down from the bar when PluginsBar.open is true (hover the
+            // Plugins button to preview, click it to pin -- see
+            // services/PluginsBar.qml). Global state, rendered per-monitor,
+            // same pattern as sidePanel above.
+            BarModules.PluginsStrip {
+                id: pluginsStrip
+
+                anchors.top: barStrip.bottom
+                z: 3
+                open: PluginsBar.open
+                borderThickness: root.borderThickness
+                onPluginActivated: id => root.togglePlugin(id)
+            }
+
             // Anchor-only hosts: zero-width, invisible, but live so their
             // panels can open and position themselves against this surface.
             // Catches clicks anywhere outside the bar and the open panel. Only
@@ -709,6 +986,41 @@ Item {
                 visible: panel.calendarOpen
                 acceptedButtons: Qt.AllButtons
                 onPressed: root.closeCalendar()
+            }
+
+            // Celeste's own settings panel, opened by the gear in the side
+            // panel's session column. Reuses MenuPanel rather than growing a
+            // near-identical component: that type is already generic over
+            // open/contentComponent, and sharing it means the settings panel
+            // inherits the same grow-from-the-bottom-border animation and
+            // border fillets the launcher has.
+            //
+            // Its closer sits at z 0 like the calendar's, NOT z 10 like the
+            // launcher's: the launcher wants to swallow the first click
+            // anywhere, but leaving the bar and side panel live here means
+            // the gear that opened this can also close it.
+            MouseArea {
+                anchors.fill: parent
+                z: 0
+                enabled: panel.settingsOpen
+                visible: panel.settingsOpen
+                acceptedButtons: Qt.AllButtons
+                onPressed: SettingsPanel.close()
+            }
+
+            MenuModule.MenuPanel {
+                id: settingsPanel
+
+                z: 11
+                borderThickness: root.borderThickness
+                open: panel.settingsOpen
+                contentComponent: settingsContent
+            }
+
+            Component {
+                id: settingsContent
+
+                SettingsModule.SettingsContent {}
             }
 
             BarModules.Popout {
@@ -760,6 +1072,8 @@ Item {
                         return bluetoothPopout;
                     case "battery":
                         return batteryPopout;
+                    case "agents":
+                        return agentsPopout;
                     }
                     return null;
                 }
@@ -806,6 +1120,12 @@ Item {
                 id: batteryPopout
 
                 Popouts.BatteryPopout {}
+            }
+
+            Component {
+                id: agentsPopout
+
+                Popouts.AgentsPopout {}
             }
 
             Component {
@@ -866,6 +1186,15 @@ Item {
                     // System panels deliberately stay inside Celeste's full
                     // screen surface. That gives them the same downward grow
                     // animation and concave border joins as the calendar.
+                    //
+                    // "agents" used to be a special case routed through the
+                    // anchor-hosted real omarchy.agents panel, but that panel
+                    // draws its own border via a shared Omarchy Ui component
+                    // this repo cannot restyle -- see CLAUDE.md's "AI usage
+                    // icon" entry. It now has a full Celeste-native popout
+                    // (AgentsPopout.qml, backed by services/AgentUsage.qml)
+                    // like every other status icon, so no special-casing is
+                    // needed here any more.
                     onHoverChanged: (name, centre) => panel.setPopout(name, centre)
                     onIconClicked: (name, centre) => {
                         if (panel.popoutName === name) {
@@ -915,6 +1244,12 @@ Item {
                         }
                     }
                 }
+            }
+
+            Component {
+                id: pluginsComponent
+
+                BarComponents.Plugins {}
             }
 
             Component {

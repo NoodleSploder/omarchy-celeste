@@ -29,12 +29,16 @@ StyledRect {
     readonly property int gap: Math.round(Tokens.spacing.medium / 2)
 
     function collapsed(id) {
-        if (id === "lockStatus")
-            return !Keyboard.anyLock;
+        if (id === "capsLock")
+            return !Keyboard.capsLock;
+        if (id === "numLock")
+            return !Keyboard.numLock;
         if (id === "battery")
             return !Battery.present;
         if (id === "bluetooth")
             return !Bt.available;
+        if (id === "agents")
+            return !AgentUsage.available;
         return false;
     }
 
@@ -125,15 +129,22 @@ StyledRect {
                 color: {
                     if (entryId === "battery" && Battery.low)
                         return Colours.palette.m3error;
-                    if (entryId === "lockStatus")
+                    if (entryId === "capsLock" || entryId === "numLock")
                         return Colours.palette.m3tertiary;
                     return root.colour;
                 }
 
                 text: {
                     switch (icon.entryId) {
-                    case "lockStatus":
-                        return Keyboard.capsLock ? "keyboard_capslock" : "pin";
+                    case "capsLock":
+                        return "keyboard_capslock";
+                    case "numLock":
+                        // Material Symbols has no dedicated numlock glyph --
+                        // confirmed by grepping the actual font file's glyph
+                        // names, not assumed -- so this is the closest
+                        // generic keyboard-lock icon, kept visually distinct
+                        // from capsLock's own specific glyph.
+                        return "keyboard_lock";
                     case "audio":
                         if (Audio.muted || Audio.volumePercent === 0)
                             return "volume_off";
@@ -146,6 +157,8 @@ StyledRect {
                         return Bt.icon;
                     case "battery":
                         return Battery.icon;
+                    case "agents":
+                        return "smart_toy";
                     }
                     return "help";
                 }
