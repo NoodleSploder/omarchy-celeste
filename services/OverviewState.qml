@@ -90,6 +90,14 @@ QtObject {
         root.open = !root.open;
     }
 
+    // Separate from toggle() so a directional trigger can be one-way: the
+    // four-finger swipe up opens and the swipe down closes, which only reads
+    // correctly if swiping up on an already-open overview leaves it open
+    // rather than dismissing it.
+    function show() {
+        root.open = true;
+    }
+
     function close() {
         root.open = false;
         root.endDrag();

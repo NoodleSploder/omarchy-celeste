@@ -449,6 +449,24 @@ Item {
         onPressed: OverviewState.toggle()
     }
 
+    // One-way counterparts to "overview" above, for the four-finger swipe in
+    // ~/.config/hypr/input.lua: a direction gesture should mean the same thing
+    // every time, so up always opens and down always closes rather than both
+    // toggling.
+    GlobalShortcut {
+        appid: "celeste"
+        name: "overviewShow"
+        description: "Open the workspace overview"
+        onPressed: OverviewState.show()
+    }
+
+    GlobalShortcut {
+        appid: "celeste"
+        name: "overviewHide"
+        description: "Close the workspace overview"
+        onPressed: OverviewState.close()
+    }
+
     GlobalShortcut {
         appid: "celeste"
         name: "menu"

@@ -28,6 +28,45 @@ Item {
 
     readonly property int shown: Config.bar.workspaces.shown
 
+    // ---------------------------------------------------------- card sizing
+    //
+    // Cards are shaped like the monitor they stand for. WorkspaceCard scales
+    // its window previews by WIDTH alone (root.width / monitorWidth), so a
+    // card whose aspect doesn't match the screen's leaves a dead band along
+    // the bottom -- the previews stop where the monitor's height maps to,
+    // and the rest of the card is empty. Letting the cells fill the grid gave
+    // them whatever shape the grid area happened to divide into, which is
+    // exactly that bug.
+    //
+    // hostScreen, not Hyprland's monitor: ShellScreen is transform-aware,
+    // while monitor.width/height report the unrotated panel mode, so a
+    // portrait display would come back with its axes swapped. Same source
+    // WorkspaceCard already scales from.
+    readonly property int columns: Math.min(3, root.shown)
+    readonly property int rows: Math.ceil(root.shown / root.columns)
+
+    readonly property real monitorAspect: {
+        const w = root.hostScreen ? root.hostScreen.width : 0;
+        const h = root.hostScreen ? root.hostScreen.height : 0;
+        return (w > 0 && h > 0) ? w / h : 16 / 9;
+    }
+
+    readonly property real availableWidth:
+        root.width - root.borderThickness * 2 - Tokens.padding.extraExtraLarge * 2
+    readonly property real availableHeight:
+        root.height - root.barSize - root.borderThickness - Tokens.padding.extraExtraLarge * 2
+
+    // The largest cell of the right shape that still fits the grid both ways:
+    // width-limited on a wide screen, height-limited on a tall one.
+    readonly property real cellWidth: {
+        const spacing = Tokens.spacing.large;
+        const maxWidth = (root.availableWidth - spacing * (root.columns - 1)) / root.columns;
+        const maxHeight = (root.availableHeight - spacing * (root.rows - 1)) / root.rows;
+        return Math.max(0, Math.min(maxWidth, maxHeight * root.monitorAspect));
+    }
+
+    readonly property real cellHeight: root.cellWidth / root.monitorAspect
+
     // Global layout origin of this monitor, used to lift local coordinates into
     // the shared space the drag registry works in.
     readonly property real screenX: root.monitor ? root.monitor.x : 0
@@ -65,11 +104,11 @@ Item {
     GridLayout {
         id: grid
 
+        // No explicit size: the grid now shrinks to its cells rather than
+        // filling the screen and stretching them to fit.
         anchors.centerIn: parent
-        width: parent.width - root.borderThickness * 2 - Tokens.padding.extraExtraLarge * 2
-        height: parent.height - root.barSize - root.borderThickness - Tokens.padding.extraExtraLarge * 2
 
-        columns: Math.min(3, root.shown)
+        columns: root.columns
         rowSpacing: Tokens.spacing.large
         columnSpacing: Tokens.spacing.large
 
@@ -79,8 +118,8 @@ Item {
             delegate: WorkspaceCard {
                 required property int index
 
-                Layout.fillWidth: true
-                Layout.fillHeight: true
+                Layout.preferredWidth: root.cellWidth
+                Layout.preferredHeight: root.cellHeight
 
                 workspaceId: root.wsBase + index
                 // Relabelled to the monitor-local number, not the global id.
