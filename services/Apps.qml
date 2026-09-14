@@ -66,19 +66,35 @@ QtObject {
         return icon ? Quickshell.iconPath(icon, "") : "";
     }
 
+    // Quickshell reports a toplevel's address as bare hex ("55794ad07a20"),
+    // while every Hyprland dispatcher expects the 0x-prefixed form. Sending
+    // the bare one is not an error you can see: the dispatch returns a
+    // "window not found" warning to the caller's stderr and the click simply
+    // does nothing. Confirmed by dispatching both forms by hand -- bare
+    // warned and changed nothing, prefixed switched workspace and focused the
+    // window.
+    function hyprAddress(t) {
+        const raw = t && t.address ? String(t.address) : "";
+        if (raw === "")
+            return "";
+        return raw.indexOf("0x") === 0 ? raw : "0x" + raw;
+    }
+
     function focus(t) {
-        if (!t || !t.address)
+        const address = root.hyprAddress(t);
+        if (address === "")
             return;
         Hyprland.dispatch(Hyprland.usingLua
-            ? `hl.dsp.focus({ window = "address:${t.address}" })`
-            : `focuswindow address:${t.address}`);
+            ? `hl.dsp.focus({ window = "address:${address}" })`
+            : `focuswindow address:${address}`);
     }
 
     function close(t) {
-        if (!t || !t.address)
+        const address = root.hyprAddress(t);
+        if (address === "")
             return;
         Hyprland.dispatch(Hyprland.usingLua
-            ? `hl.dsp.window.close({ window = "address:${t.address}" })`
-            : `closewindow address:${t.address}`);
+            ? `hl.dsp.window.close({ window = "address:${address}" })`
+            : `closewindow address:${address}`);
     }
 }

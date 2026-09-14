@@ -98,20 +98,27 @@ Item {
     property real screenX: 0
     property real screenY: 0
 
+    // Both of these go through Apps.hyprAddress: Quickshell hands out a bare
+    // hex address and Hyprland wants it 0x-prefixed, which is why clicking a
+    // window in the overview used to close it without going anywhere.
+    // Focusing a window on another workspace switches to that workspace on
+    // its own, so this is all "take me to that app" needs.
     function activate() {
-        if (!root.toplevel)
+        const address = Apps.hyprAddress(root.toplevel);
+        if (address === "")
             return;
         Hyprland.dispatch(Hyprland.usingLua
-            ? `hl.dsp.focus({ window = "address:${root.toplevel.address}" })`
-            : `focuswindow address:${root.toplevel.address}`);
+            ? `hl.dsp.focus({ window = "address:${address}" })`
+            : `focuswindow address:${address}`);
         OverviewState.close();
     }
 
     function moveTo(workspaceId) {
-        if (!root.toplevel)
+        const address = Apps.hyprAddress(root.toplevel);
+        if (address === "")
             return;
         Hyprland.dispatch(Hyprland.usingLua
-            ? `hl.dsp.window.move({ window = "address:${root.toplevel.address}", workspace = "${workspaceId}", follow = false })`
-            : `movetoworkspacesilent ${workspaceId},address:${root.toplevel.address}`);
+            ? `hl.dsp.window.move({ window = "address:${address}", workspace = "${workspaceId}", follow = false })`
+            : `movetoworkspacesilent ${workspaceId},address:${address}`);
     }
 }
