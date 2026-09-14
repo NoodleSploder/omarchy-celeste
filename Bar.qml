@@ -358,6 +358,98 @@ Item {
         }
     }
 
+    // ------------------------------------------------- hosted bar widgets
+    //
+    // A hosted plugin's panel positions itself from anchorItem.QsWindow.window
+    // -- Ui/KeyboardPanel.qml computes `y = anchorWindow.height + gap` for a
+    // top bar. Celeste draws its bar inside ONE FULLSCREEN surface, so a
+    // widget hosted there reports a bar as tall as the screen and its panel
+    // lands off the bottom edge, clipped. (Printbar showed only its header for
+    // exactly this reason.)
+    //
+    // So hosted widgets are not drawn in the bar at all. They render in
+    // anchorSurface -- full width, bar height, an honest coordinate frame --
+    // positioned over the slot a placeholder reserves for them in the bar.
+    // Full width matters as much as the height: KeyboardPanel maps the anchor
+    // through anchorWindow.contentItem and treats the result as a screen x, so
+    // a narrow per-widget window would place every panel near the left edge.
+    readonly property var celesteEntryIds: [
+        "spacer", "workspaces", "clock", "activeWindow",
+        "statusIcons", "runningApps", "tray", "media", "resources"
+    ]
+
+    function isHostedEntry(id) {
+        return root.celesteEntryIds.indexOf(String(id || "")) === -1;
+    }
+
+    // The full entry records, not just ids: an entry carries the widget's own
+    // settings (printbar's printerName, a clock's format) and the widget is no
+    // longer instantiated from the bar where modelData was to hand. Passing
+    // only the id silently dropped every per-widget setting and sent each
+    // plugin back to its defaults.
+    readonly property var hostedBarEntries: {
+        const out = [];
+        const seen = {};
+        for (const e of root.entries) {
+            const id = String(e.id || "");
+            if (!id || !root.isHostedEntry(id) || seen[id])
+                continue;
+            seen[id] = true;
+            out.push(e);
+        }
+        return out;
+    }
+
+    readonly property var hostedBarIds: root.hostedBarEntries.map(e => String(e.id))
+
+    // Two maps, not one record. The placeholder's implicitWidth reads the
+    // width map and its publish writes the x map; the widget's x reads the x
+    // map and its publish writes the width map. Sharing one map made each
+    // item's own size binding depend on a map it also wrote to, which QML
+    // correctly flagged as a binding loop.
+    property var hostedBarXs: ({})
+
+    property var hostedBarWidths: ({})
+
+    function setHostedBarX(screenName, id, x) {
+        if (!screenName || !id)
+            return;
+        const key = `${screenName}:${id}`;
+        const nx = Math.max(0, Number(x) || 0);
+        if (root.hostedBarXs[key] === nx)
+            return;
+        const next = {};
+        for (const k in root.hostedBarXs)
+            next[k] = root.hostedBarXs[k];
+        next[key] = nx;
+        root.hostedBarXs = next;
+    }
+
+    function setHostedBarWidth(screenName, id, width) {
+        if (!screenName || !id)
+            return;
+        const key = `${screenName}:${id}`;
+        const nw = Math.max(0, Number(width) || 0);
+        if (root.hostedBarWidths[key] === nw)
+            return;
+        const next = {};
+        for (const k in root.hostedBarWidths)
+            next[k] = root.hostedBarWidths[k];
+        next[key] = nw;
+        root.hostedBarWidths = next;
+    }
+
+    function hostedBarX(screenName, id) {
+        const v = root.hostedBarXs[`${screenName}:${id}`];
+        return v === undefined ? 0 : v;
+    }
+
+    // undefined means "not measured yet", which the placeholder needs to tell
+    // apart from a measured zero (a plugin with no bar component at all).
+    function hostedBarWidth(screenName, id) {
+        return root.hostedBarWidths[`${screenName}:${id}`];
+    }
+
     function setStatusPanelAnchor(name, screenName, centre) {
         const id = root.statusPanelId(name);
         if (!id || !screenName)
@@ -637,7 +729,99 @@ Item {
             exclusionMode: ExclusionMode.Ignore
             exclusiveZone: 0
             color: "transparent"
-            mask: Region {}
+            // Was Region {} -- accepts nothing -- back when this surface only
+            // held invisible anchors. The hosted widgets drawn here are real
+            // controls, so the band they occupy has to take input.
+            mask: Region {
+                item: hostedBand
+            }
+
+            // The bar's own hosted widgets, drawn here rather than in the bar
+            // so their panels anchor against a bar-height window. Wrapped in a
+            // container so the mask can cover them: Region takes static
+            // children, and these are dynamic.
+            //
+            // The container spans the whole run of hosted slots, so a Celeste
+            // entry sitting BETWEEN two hosted ones would have its clicks
+            // caught here. The default layout keeps them contiguous, and the
+            // alternative -- one Region per widget -- needs a fixed slot count
+            // to declare statically.
+            Item {
+                id: hostedBand
+
+                readonly property real bandLeft: {
+                    const screenName = String(anchorSurface.modelData.name);
+                    let min = -1;
+                    for (const id of root.hostedBarIds) {
+                        const w = root.hostedBarWidth(screenName, id);
+                        if (!w)
+                            continue;
+                        const x = root.hostedBarX(screenName, id);
+                        if (min < 0 || x < min)
+                            min = x;
+                    }
+                    return min < 0 ? 0 : min;
+                }
+
+                readonly property real bandRight: {
+                    const screenName = String(anchorSurface.modelData.name);
+                    let max = 0;
+                    for (const id of root.hostedBarIds) {
+                        const w = root.hostedBarWidth(screenName, id);
+                        if (!w)
+                            continue;
+                        const right = root.hostedBarX(screenName, id) + w;
+                        if (right > max)
+                            max = right;
+                    }
+                    return max;
+                }
+
+                x: hostedBand.bandLeft
+                y: 0
+                width: Math.max(0, hostedBand.bandRight - hostedBand.bandLeft)
+                height: root.barSize
+
+                Repeater {
+                    model: root.hostedBarEntries
+
+                    delegate: BarModules.HostedWidget {
+                        required property var modelData
+
+                        readonly property string entryId: String(modelData.id || "")
+
+                        x: root.hostedBarX(String(anchorSurface.modelData.name), entryId)
+                            - hostedBand.bandLeft
+                        // Centred in the bar-height surface, matching the
+                        // padding the bar insets its own entries by.
+                        y: (root.barSize - height) / 2
+
+                        widgetId: entryId
+                        registry: root.barWidgetRegistry
+                        shell: root.shell
+                        // The entry itself, exactly as the bar used to pass it.
+                        settings: modelData
+                        barSize: Tokens.sizes.bar.innerWidth
+                        barTotalSize: root.barSize
+                        hostScreen: anchorSurface.modelData
+                        contentScale: 1.4
+                        uniformCell: Tokens.sizes.bar.innerWidth * 0.65
+
+                        // Registered like any other hosted widget, so
+                        // shell.summon/hide/toggle can still route to it --
+                        // without this the host answers "target not found".
+                        onRegistered: (id, self) => root.registerHosted(id, self)
+                        onUnregistered: (id, self) => root.unregisterHosted(id, self)
+
+                        // Publishes its measured width back to the placeholder
+                        // holding its slot open in the bar.
+                        onImplicitWidthChanged: root.setHostedBarWidth(
+                            String(anchorSurface.modelData.name), entryId, implicitWidth)
+                        Component.onCompleted: root.setHostedBarWidth(
+                            String(anchorSurface.modelData.name), entryId, implicitWidth)
+                    }
+                }
+            }
 
             Repeater {
                 model: root.anchorWidgetIds
@@ -865,10 +1049,11 @@ Item {
                 case "resources":
                     return resourceComponent;
                 default:
-                    // Not a Celeste entry: treat the id as an Omarchy bar widget
-                    // and let HostedWidget resolve it against the registry. An
-                    // id that matches nothing renders at zero width.
-                    return hostedWidgetComponent;
+                    // Not a Celeste entry: an Omarchy bar widget. Only a
+                    // placeholder goes in the bar -- the widget itself is drawn
+                    // in anchorSurface so its panel gets an honest bar height
+                    // to anchor against. See root.hostedBarIds.
+                    return hostedPlaceholderComponent;
                 }
             }
 
@@ -1390,6 +1575,73 @@ Item {
                 id: resourceComponent
 
                 BarComponents.Resource {}
+            }
+
+            Component {
+                id: hostedPlaceholderComponent
+
+                // Reserves the slot in the bar and publishes where it landed.
+                // Draws nothing: the widget itself lives in anchorSurface, at
+                // the x this reports.
+                Item {
+                    id: placeholder
+
+                    property var modelData: ({})
+                    readonly property string entryId: String(placeholder.modelData.id || "")
+                    readonly property string screenName: String(panel.modelData.name)
+                    readonly property var measured: root.hostedBarWidth(placeholder.screenName, placeholder.entryId)
+
+                    // Width comes from the real widget, which measures itself
+                    // over in the anchor surface; x flows the other way, so
+                    // there is no cycle.
+                    //
+                    // Until that measurement arrives the slot holds a
+                    // provisional width. Starting at zero would be a deadlock:
+                    // BarSection drops zero-width entries out of the layout, so
+                    // the placeholder would never be laid out, never report an
+                    // x, and the widget would sit at 0 forever. Once the widget
+                    // reports -- including reporting 0, for a plugin with no bar
+                    // component -- the real value takes over.
+                    implicitWidth: placeholder.measured === undefined
+                        ? Tokens.sizes.bar.innerWidth * 0.65
+                        : placeholder.measured
+                    // Reserves WIDTH only. An earlier version claimed
+                    // root.barSize (the full 60px bar) here, but the section it
+                    // sits in is only the bar minus its padding -- 40 -- so the
+                    // row's implicit height jumped to 60 and shoved every real
+                    // entry down with it: the workspace pills ended up clipped
+                    // at the section edge and the clock sat visibly low.
+                    implicitHeight: 0
+
+                    function publish() {
+                        if (placeholder.entryId === "")
+                            return;
+                        const scene = placeholder.mapToItem(null, 0, 0);
+                        root.setHostedBarX(placeholder.screenName, placeholder.entryId, scene.x);
+                    }
+
+                    // Polled rather than driven by signals, which is
+                    // deliberate. This item is a Loader's content, and a
+                    // Loader's item never moves -- the LOADER moves within the
+                    // row -- so onXChanged here never fires after layout. The
+                    // enclosing section and the whole bar can also shift
+                    // (auto sizing, a window title changing length) without
+                    // this item's own x ever changing, so there is no single
+                    // signal to hang it on. mapToItem is a function, not a
+                    // binding, so it cannot be observed either.
+                    //
+                    // A publish is a no-op unless the value actually moved, so
+                    // this settles immediately and costs nothing while idle.
+                    Timer {
+                        interval: 500
+                        running: true
+                        repeat: true
+                        onTriggered: placeholder.publish()
+                    }
+
+                    onEntryIdChanged: placeholder.publish()
+                    Component.onCompleted: placeholder.publish()
+                }
             }
 
             Component {
