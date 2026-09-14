@@ -9,8 +9,8 @@ singleton SysUsage 1.0 SysUsage.qml
 singleton OverviewState 1.0 OverviewState.qml
 singleton OmarchyMenu 1.0 OmarchyMenu.qml
 singleton SidePanel 1.0 SidePanel.qml
-singleton PluginsBar 1.0 PluginsBar.qml
 singleton PluginCatalog 1.0 PluginCatalog.qml
 singleton AgentUsage 1.0 AgentUsage.qml
 singleton Notifs 1.0 Notifs.qml
 singleton SettingsPanel 1.0 SettingsPanel.qml
+singleton LeftPanel 1.0 LeftPanel.qml

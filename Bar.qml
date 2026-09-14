@@ -28,6 +28,7 @@ import "modules/overview" as OverviewModule
 import "modules/menu" as MenuModule
 import "modules/sidepanel" as SidePanelModule
 import "modules/settings" as SettingsModule
+import "modules/leftpanel" as LeftPanelModule
 import "services"
 
 Item {
@@ -780,17 +781,17 @@ Item {
                 }
 
                 Region {
-                    item: pluginsStrip
-                    intersection: Intersection.Combine
-                }
-
-                Region {
                     item: menuHotzone
                     intersection: Intersection.Combine
                 }
 
                 Region {
                     item: settingsPanel
+                    intersection: Intersection.Combine
+                }
+
+                Region {
+                    item: leftPanel
                     intersection: Intersection.Combine
                 }
             }
@@ -848,8 +849,6 @@ Item {
                     return statusIconsComponent;
                 case "runningApps":
                     return runningAppsComponent;
-                case "plugins":
-                    return pluginsComponent;
                 case "tray":
                     return trayComponent;
                 case "media":
@@ -985,6 +984,20 @@ Item {
             // every screen at once and Celeste matched that originally, but
             // four copies of the sliders/session/notification drawer on a
             // multi-monitor desk is not what was wanted here.
+            // The left edge's hover rail and its slideouts -- the mirror of
+            // sidePanel below, and screen-targeted the same way so only the
+            // monitor the pointer settled on shows it.
+            LeftPanelModule.LeftPanel {
+                id: leftPanel
+
+                screen: panel.modelData
+                borderThickness: root.borderThickness
+                topInset: root.barHidden ? root.borderThickness : root.barSize
+                z: 11
+
+                onPluginActivated: id => root.togglePlugin(id)
+            }
+
             SidePanelModule.SidePanel {
                 id: sidePanel
 
@@ -1057,20 +1070,6 @@ Item {
                         alignment: Qt.AlignRight
                     }
                 }
-            }
-
-            // Grows down from the bar when PluginsBar.open is true (hover the
-            // Plugins button to preview, click it to pin -- see
-            // services/PluginsBar.qml). Global state, rendered per-monitor,
-            // same pattern as sidePanel above.
-            BarModules.PluginsStrip {
-                id: pluginsStrip
-
-                anchors.top: barStrip.bottom
-                z: 3
-                open: PluginsBar.open
-                borderThickness: root.borderThickness
-                onPluginActivated: id => root.togglePlugin(id)
             }
 
             // Anchor-only hosts: zero-width, invisible, but live so their
@@ -1345,11 +1344,6 @@ Item {
                 }
             }
 
-            Component {
-                id: pluginsComponent
-
-                BarComponents.Plugins {}
-            }
 
             Component {
                 id: mediaComponent

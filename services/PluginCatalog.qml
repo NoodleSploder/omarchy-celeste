@@ -1,7 +1,9 @@
 pragma Singleton
 
-// Enabled Omarchy plugins, for the Plugins bar button's expandable strip
-// (modules/bar/components/Plugins.qml, modules/bar/PluginsStrip.qml).
+// Enabled Omarchy plugins, listed by the left edge's plugins slideout
+// (modules/leftpanel/PluginsList.qml). This used to back a Plugins button and
+// an expandable strip on the bar itself; those were removed once the left
+// rail took the job over.
 //
 // Bar.qml's `pluginRegistry` (assigned by the host, PluginRegistryApi.qml in
 // the Omarchy shell) is deliberately NOT the full catalogue -- confirmed by

@@ -97,7 +97,6 @@ QtObject {
                 { id: "workspaces", enabled: true },
                 { id: "clock", enabled: true },
                 { id: "spacer", enabled: true },
-                { id: "plugins", enabled: true },
                 { id: "tray", enabled: true },
                 { id: "runningApps", enabled: true },
                 { id: "statusIcons", enabled: true },
