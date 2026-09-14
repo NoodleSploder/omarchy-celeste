@@ -26,6 +26,24 @@ QtObject {
     // Which slideout is open: "" | "plugins" | "settings".
     property string panel: ""
 
+    // The plugin whose detail pane is showing, opened by resting on its row
+    // in the plugins list. Cleared whenever the plugins slideout itself
+    // closes, since a detail pane for a hidden list would be orphaned.
+    property string detailPluginId: ""
+
+    onPanelChanged: {
+        if (root.panel !== "plugins")
+            root.detailPluginId = "";
+    }
+
+    function showDetail(id) {
+        root.detailPluginId = String(id || "");
+    }
+
+    function clearDetail() {
+        root.detailPluginId = "";
+    }
+
     readonly property bool panelOpen: root.panel !== ""
 
     // How long the pointer must rest on the strip before the rail appears.

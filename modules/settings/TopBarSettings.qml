@@ -19,7 +19,7 @@ Item {
     id: root
 
     readonly property var cfg: Config.bar.sections || ({})
-    readonly property string mode: String(root.cfg.mode || "percent")
+    readonly property string mode: String(root.cfg.mode || "auto")
     readonly property var percent: root.cfg.percent || ({})
     readonly property var fixed: root.cfg.fixed || ({})
 
@@ -107,6 +107,12 @@ Item {
             }
 
             Choice {
+                label: "Auto"
+                active: root.mode === "auto"
+                onClicked: root.setMode("auto")
+            }
+
+            Choice {
                 label: "Percentage"
                 active: root.mode === "percent"
                 onClicked: root.setMode("percent")
@@ -120,7 +126,9 @@ Item {
         }
 
         Repeater {
-            model: root.keys
+            // Auto sizes itself from what the sections contain, so there is
+            // nothing per-section to set.
+            model: root.mode === "auto" ? [] : root.keys
 
             delegate: RowLayout {
                 id: row
@@ -175,7 +183,9 @@ Item {
 
         StyledText {
             Layout.fillWidth: true
-            text: "The middle section stays centred on the screen whatever the other two contain, and each section clips instead of pushing its neighbours along."
+            text: root.mode === "auto"
+                ? "The middle takes exactly the width its widgets need, so nothing there gets squeezed out as you add them. The window title on the left shortens to make room."
+                : "The middle section stays centred on the screen whatever the other two contain, and each section clips instead of pushing its neighbours along."
             font: Tokens.font.body.small
             color: Colours.palette.m3outline
             wrapMode: Text.WordWrap

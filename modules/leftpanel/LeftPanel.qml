@@ -64,8 +64,8 @@ Item {
     // claim more than the strip while closed -- reveal.width is the LIVE
     // animated width, not the implicit target, so a shut panel does not sit
     // on a slab of the screen edge.
-    implicitWidth: Math.max(hoverZone.implicitWidth, rail.width + slideout.width + root.borderThickness)
-    implicitHeight: Math.max(hoverZone.implicitHeight, Math.max(rail.height, slideout.height))
+    implicitWidth: Math.max(hoverZone.implicitWidth, rail.width + slideout.width + detail.width + root.borderThickness)
+    implicitHeight: Math.max(hoverZone.implicitHeight, Math.max(rail.height, Math.max(slideout.height, detail.height)))
     width: implicitWidth
     height: implicitHeight
 
@@ -245,11 +245,12 @@ Item {
         Rectangle {
             anchors.fill: parent
             color: Colours.tPalette.m3surface
-            // Square where it meets the rail, rounded on the free side.
+            // Square where it meets the rail, and square on the right too
+            // once the detail pane abuts it, so the three read as one card.
             topLeftRadius: 0
             bottomLeftRadius: 0
-            topRightRadius: Tokens.rounding.extraLarge
-            bottomRightRadius: Tokens.rounding.extraLarge
+            topRightRadius: detail.width > 0 ? 0 : Tokens.rounding.extraLarge
+            bottomRightRadius: detail.width > 0 ? 0 : Tokens.rounding.extraLarge
         }
 
         Loader {
@@ -267,6 +268,84 @@ Item {
             sourceComponent: root.panel === "plugins" ? pluginsContent
                 : root.panel === "settings" ? settingsContent
                 : null
+        }
+    }
+
+    // Third step: the hovered plugin's detail pane, outboard of the plugins
+    // list. Only ever open alongside that list -- LeftPanel clears the detail
+    // id when the slideout changes -- so it can assume a slideout to its left.
+    Item {
+        id: detail
+
+        anchors.left: slideout.right
+        anchors.verticalCenter: parent.verticalCenter
+
+        readonly property bool showing: root.panel === "plugins" && LeftPanel.detailPluginId !== ""
+        readonly property real contentWidth: detailContent.item ? detailContent.item.implicitWidth : 0
+        readonly property real contentHeight: detailContent.item ? detailContent.item.implicitHeight : 0
+
+        implicitWidth: detail.contentWidth + Tokens.padding.large * 2
+        implicitHeight: Math.min(root.usableHeight, detail.contentHeight + Tokens.padding.large * 2)
+
+        width: detail.showing ? implicitWidth : 0
+        height: implicitHeight
+        visible: width > 0
+        clip: true
+
+        Behavior on width {
+            Anim {
+                type: Anim.DefaultSpatial
+            }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: Colours.tPalette.m3surface
+            topLeftRadius: 0
+            bottomLeftRadius: 0
+            topRightRadius: Tokens.rounding.extraLarge
+            bottomRightRadius: Tokens.rounding.extraLarge
+        }
+
+        Loader {
+            id: detailContent
+
+            anchors.left: parent.left
+            anchors.leftMargin: Tokens.padding.large
+            anchors.verticalCenter: parent.verticalCenter
+            width: detail.contentWidth
+            height: Math.max(0, detail.height - Tokens.padding.large * 2)
+
+            active: detail.showing
+            sourceComponent: detail.showing ? detailComponent : null
+        }
+    }
+
+    // The detail pane is shorter than the plugins list beside it, so the same
+    // step join applies here as between the rail and the list.
+    InvertedCorner {
+        anchors.right: detail.left
+        anchors.bottom: detail.top
+        size: Tokens.rounding.extraLarge
+        colour: Colours.tPalette.m3surface
+        corner: InvertedCorner.BottomRight
+        visible: detail.width > 0 && detail.height < slideout.height
+    }
+
+    InvertedCorner {
+        anchors.right: detail.left
+        anchors.top: detail.bottom
+        size: Tokens.rounding.extraLarge
+        colour: Colours.tPalette.m3surface
+        corner: InvertedCorner.TopRight
+        visible: detail.width > 0 && detail.height < slideout.height
+    }
+
+    Component {
+        id: detailComponent
+
+        PluginDetail {
+            pluginId: LeftPanel.detailPluginId
         }
     }
 

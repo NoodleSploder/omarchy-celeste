@@ -22,8 +22,14 @@ QtObject {
 
     property var shell: null
 
-    readonly property color foreground: Colours.palette.m3onSurface
-    readonly property color barForeground: Colours.palette.m3onSurface
+    // Hosted widgets draw their icons and text in whatever this reports, so
+    // it is what decides whether a plugin looks like part of Celeste's bar or
+    // a guest on it. m3onSurface -- the neutral Omarchy would use -- left them
+    // grey next to Celeste's own accented clock and status icons; m3secondary
+    // is the role those icons already use, so plugins now match the row they
+    // sit in and follow the theme with it.
+    readonly property color foreground: Colours.palette.m3secondary
+    readonly property color barForeground: Colours.palette.m3secondary
     readonly property color background: Colours.tPalette.m3surface
     readonly property color urgent: Colours.palette.m3error
 

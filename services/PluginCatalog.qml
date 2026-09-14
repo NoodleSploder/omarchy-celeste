@@ -54,15 +54,25 @@ QtObject {
         return Array.isArray(root.shellConfig.disabledPlugins) && root.shellConfig.disabledPlugins.indexOf(id) !== -1;
     }
 
-    function isReferenced(id) {
+    // Placed on Omarchy's own top bar: an entry in bar.layout's left, center
+    // or right. This is precisely what makes a plugin visible on the bar when
+    // the Omarchy shell is running, so Celeste treats it as "the ones the
+    // user actually put somewhere" and floats them to the top of its list.
+    function isOnBar(id) {
         const bar = root.shellConfig.bar;
-        if (bar && bar.layout) {
-            for (const section of ["left", "center", "right"]) {
-                const arr = bar.layout[section];
-                if (Array.isArray(arr) && arr.some(e => (typeof e === "string" ? e : (e && e.id)) === id))
-                    return true;
-            }
+        if (!bar || !bar.layout)
+            return false;
+        for (const section of ["left", "center", "right"]) {
+            const arr = bar.layout[section];
+            if (Array.isArray(arr) && arr.some(e => (typeof e === "string" ? e : (e && e.id)) === id))
+                return true;
         }
+        return false;
+    }
+
+    function isReferenced(id) {
+        if (root.isOnBar(id))
+            return true;
         return Array.isArray(root.shellConfig.plugins) && root.shellConfig.plugins.some(e => e && e.id === id);
     }
 
@@ -119,7 +129,13 @@ QtObject {
             const m = merged[id];
             if (m.kinds.indexOf("bar") !== -1)
                 continue;
-            if (!m.kinds.some(k => summonable.indexOf(k) !== -1))
+            // A plugin the user has placed on Omarchy's bar earns its place
+            // here whatever its kinds say. Those are mostly plain
+            // "bar-widget" manifests, which the summonable test below drops;
+            // they are also the plugins the user sees every day, so leaving
+            // them out made the list look like it was missing things.
+            const onBar = root.isOnBar(id);
+            if (!onBar && !m.kinds.some(k => summonable.indexOf(k) !== -1))
                 continue;
             if (!root.isEnabled(m))
                 continue;
@@ -127,10 +143,20 @@ QtObject {
             out.push({
                 id: id,
                 name: String(m.name || id),
-                iconPath: dir ? "file://" + dir + "/icon.png" : ""
+                iconPath: dir ? "file://" + dir + "/icon.png" : "",
+                // barWidget.category is the only icon-ish signal any manifest
+                // carries -- there is no icon field in the schema, and only
+                // two installed plugins ship an icon.png at all. The list
+                // turns it into a glyph so rows differ from one another
+                // instead of all showing the same puzzle piece.
+                category: String((m.barWidget && m.barWidget.category) || ""),
+                onBar: onBar
             });
         }
-        out.sort((a, b) => a.name.localeCompare(b.name));
+        // Bar plugins first, alphabetical within each group.
+        out.sort((a, b) => (a.onBar === b.onBar)
+            ? a.name.localeCompare(b.name)
+            : (a.onBar ? -1 : 1));
         return out;
     }
 

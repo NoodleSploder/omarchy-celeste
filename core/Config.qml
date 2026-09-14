@@ -114,13 +114,22 @@ QtObject {
             // left section from shoving the centred group off-centre, which is
             // the whole reason this exists.
             //
+            // mode "auto":    the middle is exactly as wide as its entries
+            //                 need, and the outer two are capped at the space
+            //                 left on their side of it. Nothing in the middle
+            //                 or right is ever squeezed out; the window title
+            //                 on the left elides to absorb the difference.
             // mode "percent": each width is a percentage of the usable bar.
             // mode "fixed":   each width is in pixels, except the string
             //                 "remaining", which splits whatever the fixed
             //                 sections leave over between the sections asking
             //                 for it.
+            //
+            // "auto" is the default because the fixed modes clip: adding
+            // widgets to a section eventually pushes its contents past a width
+            // that does not grow, and they simply vanish.
             sections: {
-                mode: "percent",
+                mode: "auto",
                 percent: { left: 33, middle: 34, right: 33 },
                 fixed: { left: 250, middle: "remaining", right: 250 }
             },
@@ -194,6 +203,24 @@ QtObject {
         for (const k in root.user)
             next[k] = root.user[k];
         next.clockPanel = values;
+        root.user = next;
+        writer.setText(JSON.stringify(next, null, 2));
+    }
+
+    // Persists the bar's entry list -- what is on the Celeste bar and in what
+    // order. Written whole: the merge replaces arrays wholesale rather than
+    // patching them element-wise, so a partial list would silently drop
+    // everything it left out. Callers therefore pass the full effective list
+    // (root.bar.entries) with their one change applied.
+    function writeBarEntries(entries) {
+        const next = {};
+        for (const k in root.user)
+            next[k] = root.user[k];
+        const bar = {};
+        for (const k in (root.user.bar || ({})))
+            bar[k] = root.user.bar[k];
+        bar.entries = entries;
+        next.bar = bar;
         root.user = next;
         writer.setText(JSON.stringify(next, null, 2));
     }

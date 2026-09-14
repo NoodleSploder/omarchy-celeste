@@ -707,25 +707,31 @@ Item {
             // Hyprland route every pointer event to this surface regardless
             // of which output the cursor is over, which would break clicks on
             // other monitors. 75ms matches KeyboardPanel's own prime.
-            WlrLayershell.keyboardFocus: panel.menuOpen
-                ? (panel.menuFocusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
+            // Anything on this surface with a text field needs the same
+            // treatment, not just the launcher: the left panel's plugin
+            // search is a second one, and a field that never receives a
+            // keystroke is exactly the failure this priming exists to avoid.
+            readonly property bool wantsKeyboard: panel.menuOpen || panel.leftPanelOpen
+
+            WlrLayershell.keyboardFocus: panel.wantsKeyboard
+                ? (panel.keyboardPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
                 : WlrKeyboardFocus.OnDemand
 
-            property bool menuFocusPrimed: false
+            property bool keyboardPrimed: false
 
-            onMenuOpenChanged: {
-                panel.menuFocusPrimed = false;
-                if (panel.menuOpen)
-                    menuFocusPrime.restart();
+            onWantsKeyboardChanged: {
+                panel.keyboardPrimed = false;
+                if (panel.wantsKeyboard)
+                    keyboardPrime.restart();
                 else
-                    menuFocusPrime.stop();
+                    keyboardPrime.stop();
             }
 
             Timer {
-                id: menuFocusPrime
+                id: keyboardPrime
 
                 interval: 75
-                onTriggered: panel.menuFocusPrimed = true
+                onTriggered: panel.keyboardPrimed = true
             }
 
             anchors.top: true
@@ -755,7 +761,7 @@ Item {
             // it: click-outside-to-close needs the surface to actually accept
             // a click outside the bar strip, and barRegion by definition
             // discards exactly those.
-            mask: (OverviewState.open || panel.calendarOpen || panel.menuOpen || panel.settingsOpen) ? null : panel.barRegion
+            mask: (OverviewState.open || panel.calendarOpen || panel.menuOpen || panel.settingsOpen || panel.leftPanelOpen) ? null : panel.barRegion
 
             property Region barRegion: Region {
                 item: barStrip
@@ -804,6 +810,9 @@ Item {
 
             readonly property bool settingsOpen:
                 SettingsPanel.open && SettingsPanel.screenName === String(panel.modelData.name)
+
+            readonly property bool leftPanelOpen:
+                LeftPanel.panel !== "" && LeftPanel.screenName === String(panel.modelData.name)
 
             // Which status icon the pointer is over, and where it sits.
             property string popoutName: ""
@@ -1038,9 +1047,31 @@ Item {
                     anchors.fill: parent
                     anchors.margins: root.padding
 
-                    readonly property var widths: root.sectionWidths(barContent.width)
+                    // "auto" has to be computed here rather than in
+                    // root.sectionWidths: it depends on what the sections
+                    // actually contain, and those items live in this scope.
+                    //
+                    // The middle takes exactly what its entries need, so it
+                    // is never the thing that gets squeezed, and the outer two
+                    // are capped at the space left on their side of it. The
+                    // left section holds the window title, which elides, so it
+                    // is the one that gives -- everything else keeps its
+                    // natural size instead of being clipped.
+                    readonly property var widths: {
+                        if (root.sectionMode !== "auto")
+                            return root.sectionWidths(barContent.width);
+                        const middle = middleSection.contentWidth;
+                        const half = Math.max(0, (barContent.width - middle) / 2);
+                        return {
+                            left: Math.min(leftSection.contentWidth, half),
+                            middle: middle,
+                            right: Math.min(rightSection.contentWidth, half)
+                        };
+                    }
 
                     BarModules.BarSection {
+                        id: leftSection
+
                         anchors.left: parent.left
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
@@ -1051,6 +1082,8 @@ Item {
                     }
 
                     BarModules.BarSection {
+                        id: middleSection
+
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
@@ -1061,6 +1094,8 @@ Item {
                     }
 
                     BarModules.BarSection {
+                        id: rightSection
+
                         anchors.right: parent.right
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
@@ -1371,6 +1406,10 @@ Item {
                     settings: modelData
                     barSize: Tokens.sizes.bar.innerWidth
                     barTotalSize: root.barSize
+                    // Bar entries only -- the anchor-only hosts below stay at
+                    // their natural size, since nothing of them is drawn.
+                    contentScale: 1.4
+                    uniformCell: Tokens.sizes.bar.innerWidth * 0.65
                     hostScreen: panel.modelData
 
                     onRegistered: (id, self) => root.registerHosted(id, self)

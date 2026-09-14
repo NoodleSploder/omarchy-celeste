@@ -33,6 +33,12 @@ Item {
     // screen edge rather than floating in the middle of their box.
     property int alignment: Qt.AlignLeft
 
+    // What this section's entries actually need. Independent of the width the
+    // section is given -- the inner row's implicit size comes from its
+    // children, never from the box around it -- so "auto" sizing can read it
+    // without a circular binding.
+    readonly property real contentWidth: layout.implicitWidth
+
     clip: true
 
     RowLayout {
@@ -72,6 +78,15 @@ Item {
 
                 required property var modelData
                 readonly property string entryId: entry.modelData.id
+
+                // A zero-width entry must leave the layout entirely, not
+                // just draw nothing: a RowLayout still puts its spacing on
+                // either side of a visible child, so a plugin with no bar
+                // widget of its own would open a gap the width of two gaps
+                // where nothing is drawn. Spacers are the exception -- they
+                // are legitimately zero-width and do their work through
+                // fillWidth.
+                visible: entry.entryId === "spacer" || entry.implicitWidth > 0
 
                 Layout.alignment: Qt.AlignVCenter
                 // Any spacer beyond the two that mark the section boundaries
