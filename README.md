@@ -94,6 +94,25 @@ Separately, a plugin that *self-registers* a bar widget (calling
 plugins receive a detached read-only snapshot of the registry, which has no
 `register()`. `im0001gt.screens` is one such plugin.
 
+## Settings panel
+
+Click the gear icon — hover the left screen edge for the plugins rail, or
+drag out from the right edge's volume/brightness sliders to the session
+row — to open Celeste's own settings panel. Most of what's below can be set
+here instead of hand-editing JSON:
+
+- **Top Bar** — section widths (auto/percentage/fixed), per-item
+  Portrait/Landscape/Both/Off visibility, and whether the status-icon and
+  running-apps pills start collapsed behind a single glyph.
+- **System** — the Hyprland-side config Celeste depends on (global
+  shortcuts, touchpad gestures) that lives outside `shell.json`, with
+  Apply/Remove for each and diagnostics for the plugin's two most common
+  failure modes. See [docs/EXTERNAL-CONFIG.md](docs/EXTERNAL-CONFIG.md) for
+  the full picture, including what this panel deliberately does *not*
+  touch and why — importantly, it has no way to react to Celeste itself
+  being disabled or removed through Omarchy, so an item needs turning off
+  here first.
+
 ## Configuration
 
 Celeste reads `~/.config/celeste/shell.json`, falling back to
