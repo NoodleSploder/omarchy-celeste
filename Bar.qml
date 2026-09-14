@@ -159,6 +159,70 @@ Item {
 
     readonly property var entries: (Config.bar.entries || []).filter(e => e && e.enabled)
 
+    // ------------------------------------------------------------ sections
+    //
+    // The bar is three sections, and `entries` still decides what goes in
+    // each: the first two "spacer" entries are the boundaries. That keeps one
+    // source of truth for element order and means an existing config needs no
+    // migration -- the default entries list already reads left / spacer /
+    // middle / spacer / right.
+    //
+    // A THIRD or later spacer is not a boundary; it stays in whatever section
+    // it landed in and still works as an in-section filler.
+    readonly property var sectionEntries: {
+        const out = { left: [], middle: [], right: [] };
+        const order = ["left", "middle", "right"];
+        let bucket = 0;
+        for (const e of root.entries) {
+            if (e.id === "spacer" && bucket < 2) {
+                bucket++;
+                continue;
+            }
+            out[order[bucket]].push(e);
+        }
+        return out;
+    }
+
+    readonly property var sectionConfig: Config.bar.sections || ({})
+    readonly property string sectionMode: String(root.sectionConfig.mode || "percent")
+
+    // Resolves the three section widths for a bar of `avail` usable pixels.
+    //
+    // In fixed mode a width may be the string "remaining", which takes an
+    // equal share of whatever the fixed sections leave over -- that is how
+    // "Middle: 250px or Remaining" is expressed. In percent mode every width
+    // is a share of `avail`.
+    function sectionWidths(avail) {
+        const keys = ["left", "middle", "right"];
+        const out = {};
+
+        if (root.sectionMode === "fixed") {
+            const fixed = root.sectionConfig.fixed || ({});
+            const flexible = [];
+            let used = 0;
+            for (const k of keys) {
+                if (String(fixed[k]) === "remaining") {
+                    flexible.push(k);
+                    out[k] = 0;
+                } else {
+                    out[k] = Math.max(0, Number(fixed[k]) || 0);
+                    used += out[k];
+                }
+            }
+            if (flexible.length > 0) {
+                const share = Math.max(0, avail - used) / flexible.length;
+                for (const k of flexible)
+                    out[k] = share;
+            }
+            return out;
+        }
+
+        const percent = root.sectionConfig.percent || ({});
+        for (const k of keys)
+            out[k] = avail * Math.max(0, Number(percent[k]) || 0) / 100;
+        return out;
+    }
+
     // Opens/closes a plugin from the Plugins bar strip (see
     // services/PluginCatalog.qml for why the enabled-plugins list itself
     // isn't sourced from root.pluginRegistry -- that object is scoped to
@@ -927,35 +991,52 @@ Item {
                 height: root.barHidden ? 0 : root.barSize
                 visible: !root.barHidden
 
-                RowLayout {
+                // Three independently sized sections, POSITIONED rather than
+                // laid out in a row: left anchored left, right anchored right,
+                // middle anchored to the centre of the bar.
+                //
+                // That is the fix for the centred group drifting. A RowLayout
+                // gave the middle whatever space the outer two happened to
+                // leave, so a long window title on the left pushed it along;
+                // anchoring the middle to the centre makes its position
+                // independent of its neighbours' content entirely, and each
+                // section clips rather than growing past its width.
+                Item {
+                    id: barContent
+
                     anchors.fill: parent
                     anchors.margins: root.padding
-                    spacing: Tokens.spacing.medium
 
-                    Repeater {
-                        model: root.entries
+                    readonly property var widths: root.sectionWidths(barContent.width)
 
-                        delegate: Loader {
-                            id: entry
+                    BarModules.BarSection {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: barContent.widths.left
+                        entries: root.sectionEntries.left
+                        resolve: panel.componentFor
+                        alignment: Qt.AlignLeft
+                    }
 
-                            required property var modelData
-                            readonly property string entryId: entry.modelData.id
+                    BarModules.BarSection {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: barContent.widths.middle
+                        entries: root.sectionEntries.middle
+                        resolve: panel.componentFor
+                        alignment: Qt.AlignHCenter
+                    }
 
-                            Layout.alignment: Qt.AlignVCenter
-                            Layout.fillWidth: entry.entryId === "spacer"
-                            // Workspaces is loaded synchronously so the bar does
-                            // not visibly reflow on startup.
-                            asynchronous: entry.entryId !== "workspaces"
-
-                            sourceComponent: panel.componentFor(entry.entryId)
-
-                            // HostedWidget needs the whole entry (its id and any
-                            // inline settings); Celeste's own entries ignore it.
-                            onLoaded: {
-                                if (item && "modelData" in item)
-                                    item.modelData = entry.modelData;
-                            }
-                        }
+                    BarModules.BarSection {
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: barContent.widths.right
+                        entries: root.sectionEntries.right
+                        resolve: panel.componentFor
+                        alignment: Qt.AlignRight
                     }
                 }
             }

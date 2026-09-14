@@ -103,6 +103,28 @@ QtObject {
                 { id: "statusIcons", enabled: true },
                 { id: "power", enabled: true }
             ],
+            // How the three sections of the bar are sized. Which entries fall
+            // in which section is still `entries` above: the two "spacer"
+            // entries are the section boundaries (before the first = left,
+            // between = middle, after the second = right), so there is one
+            // source of truth for order and no migration for existing configs.
+            //
+            // Positioning is independent of sizing and never configurable:
+            // left is anchored left, right anchored right, middle anchored to
+            // the screen centre. That is what stops a long window title in the
+            // left section from shoving the centred group off-centre, which is
+            // the whole reason this exists.
+            //
+            // mode "percent": each width is a percentage of the usable bar.
+            // mode "fixed":   each width is in pixels, except the string
+            //                 "remaining", which splits whatever the fixed
+            //                 sections leave over between the sections asking
+            //                 for it.
+            sections: {
+                mode: "percent",
+                percent: { left: 33, middle: 34, right: 33 },
+                fixed: { left: 250, middle: "remaining", right: 250 }
+            },
             statusIcons: [
                 // Two independent entries, not one shared "lockStatus" slot:
                 // caps and num lock can both be on at once, and a single
@@ -173,6 +195,25 @@ QtObject {
         for (const k in root.user)
             next[k] = root.user[k];
         next.clockPanel = values;
+        root.user = next;
+        writer.setText(JSON.stringify(next, null, 2));
+    }
+
+    // Persists the bar's section sizing (the settings panel's Top Bar page).
+    //
+    // Only bar.sections is touched: anything else the user has under `bar` --
+    // notably their own `entries` order -- is copied through untouched, since
+    // this writes the whole user object back and a shallow overwrite of `bar`
+    // would silently discard the rest of it.
+    function writeBarSections(values) {
+        const next = {};
+        for (const k in root.user)
+            next[k] = root.user[k];
+        const bar = {};
+        for (const k in (root.user.bar || ({})))
+            bar[k] = root.user.bar[k];
+        bar.sections = values;
+        next.bar = bar;
         root.user = next;
         writer.setText(JSON.stringify(next, null, 2));
     }
