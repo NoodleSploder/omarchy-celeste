@@ -14,3 +14,4 @@ singleton AgentUsage 1.0 AgentUsage.qml
 singleton Notifs 1.0 Notifs.qml
 singleton SettingsPanel 1.0 SettingsPanel.qml
 singleton LeftPanel 1.0 LeftPanel.qml
+singleton SystemIntegration 1.0 SystemIntegration.qml

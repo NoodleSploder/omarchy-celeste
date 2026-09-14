@@ -23,7 +23,8 @@ Item {
     id: root
 
     readonly property var pages: [
-        { id: "topbar", label: "Top Bar" }
+        { id: "topbar", label: "Top Bar" },
+        { id: "system", label: "System" }
     ]
 
     property string current: "topbar"
@@ -127,12 +128,20 @@ Item {
         anchors.top: nav.top
         anchors.bottom: parent.bottom
 
-        sourceComponent: root.current === "topbar" ? topBarPage : null
+        sourceComponent: root.current === "topbar" ? topBarPage
+            : root.current === "system" ? systemPage
+            : null
     }
 
     Component {
         id: topBarPage
 
         TopBarSettings {}
+    }
+
+    Component {
+        id: systemPage
+
+        SystemSettings {}
     }
 }

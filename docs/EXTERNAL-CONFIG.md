@@ -14,13 +14,28 @@ file separates the two, because they are not the same kind of thing:
 Every path below is a user-owned file. Nothing here edits `/usr/share/omarchy/`,
 which the package manager overwrites on update.
 
+**Celeste Settings → System** (the gear icon → System tab) can apply and
+remove two of the items below itself — global shortcuts and touchpad
+gestures — each marked **Panel** below. Read its own header comment
+(`services/SystemIntegration.qml`) before touching that page: Omarchy's
+plugin enable/disable/remove has no lifecycle hooks at all (confirmed by
+reading `omarchy-plugin-enable`/`-disable`/`-remove` directly, not assumed),
+so that page cannot react to Celeste itself being disabled or removed —
+turn an item off there *first*, or it stays behind. It also never touches
+config Celeste finds already written by hand (reported as "External"
+instead of offering to remove it), which is the case for every item on
+*this* machine, since all of this was hand-written before the page existed.
+
 ---
 
 ## Required
 
 ### 1. Do not start a second Quickshell instance
 
-**File:** `~/.config/hypr/autostart.lua`
+**File:** `~/.config/hypr/autostart.lua` · **Panel:** Celeste Settings →
+System → Diagnostics detects this live (a duplicate shell count and a
+"Fix" button that comments the line out) — a one-time cleanup action, not a
+toggle, since there is nothing to "turn back on" that would ever be wanted.
 
 Celeste is a *plugin inside* Omarchy's shell, not a standalone Quickshell
 config. Omarchy's own `omarchy-launch-shell` already starts the one shell it
@@ -66,7 +81,9 @@ a bar.
 
 ### 3. Global shortcuts
 
-**File:** `~/.config/hypr/bindings.lua`
+**File:** `~/.config/hypr/bindings.lua` · **Panel:** Celeste Settings →
+System → Apply/Remove, inside a marker block it owns
+(`-- BEGIN noodlesploder.celeste (shortcuts)` / `-- END ...`).
 
 Celeste registers four `GlobalShortcut`s under the appid `celeste`. They do
 nothing until something is bound to them:
@@ -142,7 +159,8 @@ risk breaking notification delivery machine-wide.
 
 ### Touchpad gestures
 
-**File:** `~/.config/hypr/input.lua`
+**File:** `~/.config/hypr/input.lua` · **Panel:** Celeste Settings →
+System → Apply/Remove, same marker-block shape as global shortcuts above.
 
 Celeste's overview and Hyprland's workspace swipe are both driven from here.
 **Four fingers, not three**, and that distinction matters:
