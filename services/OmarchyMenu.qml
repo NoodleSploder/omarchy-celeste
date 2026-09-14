@@ -12,6 +12,17 @@ pragma Singleton
 // Celeste declares "bar", so `shell.appLibrary` is null here -- the same
 // capability-scoping already hit with pluginRegistry (see CLAUDE.md).
 // DesktopEntries is the same underlying source AppLibrary itself wraps.
+//
+// Icon resolution has the same fallback AppLibrary.qml has, ported for the
+// same reason: Quickshell's themed icon lookup (Quickshell.iconPath, backed
+// by Qt's QIconTheme / the GTK icon-theme.cache) is only ever built once per
+// process and never notices an icon file that appears afterwards -- a newly
+// installed app's icon renders as the generic fallback glyph until Celeste
+// itself is restarted, no matter how many times the launcher is reopened.
+// iconIndex is a private name->file map built by scanning the same
+// directories AppLibrary scans, refreshed whenever the app list changes and
+// whenever the menu opens (refreshIcons(), called from show()), and checked
+// before the themed lookup in iconSource() below.
 
 import QtQuick
 import Quickshell
@@ -35,6 +46,10 @@ QtObject {
 
     property var whenResults: ({})
     property var checkedResults: ({})
+
+    // Icon name (e.g. "plex") -> file path on disk. See the header comment.
+    property var iconIndex: ({})
+    property var pendingIconIndex: ({})
 
     // Navigation: a stack of item ids, root always at index 0. The current
     // route is the top of the stack; "back" just pops it. Kept as a stack
@@ -88,6 +103,7 @@ QtObject {
         root.screenName = String(screenName || "");
         root.open = true;
         root.refreshGuards();
+        root.refreshIcons();
     }
 
     function close() {
@@ -191,6 +207,67 @@ QtObject {
     }
 
     readonly property var appRows: root.appEntries.map(e => root.appRow(e, 0))
+
+    // Resolves an app's raw Icon= value to a real image source: the fallback
+    // index first (it catches icons installed after this process started),
+    // falling back to Quickshell's themed lookup otherwise. Mirrors
+    // AppLibrary.qml's own iconSource() -- see the header comment.
+    function iconSource(icon) {
+        const value = String(icon || "");
+        if (value.length === 0)
+            return Quickshell.iconPath("application-x-executable", true);
+        if (value.indexOf("file://") === 0 || value.indexOf("image://") === 0)
+            return value;
+        if (value.charAt(0) === "/")
+            return root.fileUrl(value);
+        const found = root.iconIndex[value];
+        if (found)
+            return root.fileUrl(found);
+        const themed = Quickshell.iconPath(value, true);
+        if (themed.length > 0)
+            return themed;
+        return Quickshell.iconPath("application-x-executable", true);
+    }
+
+    function fileUrl(path) {
+        if (!path)
+            return "";
+        return "file://" + String(path).split("/").map(encodeURIComponent).join("/");
+    }
+
+    // Rescans the icon directories. Safe to call any time; a scan already in
+    // flight is left to finish rather than restarted.
+    function refreshIcons() {
+        if (!iconIndexScan.running)
+            iconIndexScan.running = true;
+    }
+
+    // Same directory list and same "svg before png, first hit per name wins"
+    // rule as AppLibrary.qml's own scan, so the two stay consistent.
+    function iconIndexScanCommand() {
+        return [
+            'dirs="$HOME/.icons $HOME/.local/share/icons";',
+            'IFS=":"; for d in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do dirs="$dirs $d/icons"; done; unset IFS;',
+            'for ext in svg png; do',
+            '  for base in $dirs; do',
+            '    [[ -d $base ]] && find "$base" \\( -path "*/apps/*" -o -path "*/devices/*" \\) -name "*.$ext" 2>/dev/null;',
+            '  done;',
+            '  find /usr/share/pixmaps -maxdepth 1 -name "*.$ext" 2>/dev/null;',
+            'done'
+        ].join(' ');
+    }
+
+    function indexIconLine(path) {
+        const value = String(path || "").trim();
+        if (value.length === 0)
+            return;
+        const slash = value.lastIndexOf("/");
+        const file = slash >= 0 ? value.slice(slash + 1) : value;
+        const dot = file.lastIndexOf(".");
+        const name = dot > 0 ? file.slice(0, dot) : file;
+        if (name.length > 0 && root.pendingIconIndex[name] === undefined)
+            root.pendingIconIndex[name] = value;
+    }
 
     // Scored on the same 0-is-best scale MenuModel.searchScore uses, so app
     // hits and menu hits can be sorted against each other in one list rather
@@ -393,4 +470,38 @@ QtObject {
                 Qt.callLater(() => root.refreshGuards());
         }
     }
+
+    // Every Timer/Process in a QtObject singleton must be an explicit
+    // property, not a bare child -- QtObject has no default child-content
+    // property the way Item does, and this fails with "Cannot assign to
+    // non-existent default property" otherwise (already hit twice elsewhere
+    // in this repo; see CLAUDE.md).
+    property Process iconIndexScan: Process {
+        id: iconIndexScan
+        command: ["bash", "-c", root.iconIndexScanCommand()]
+        stdout: SplitParser {
+            onRead: line => root.indexIconLine(line)
+        }
+        onStarted: root.pendingIconIndex = ({})
+        // Swapping the property re-evaluates every iconSource() binding, so
+        // newly found icons appear without rebuilding the row list.
+        onExited: root.iconIndex = root.pendingIconIndex
+    }
+
+    // Coalesces a burst of app-list changes (a package install touches many
+    // desktop entries at once) into a single rescan, same as AppLibrary.qml.
+    property Timer iconIndexDebounce: Timer {
+        id: iconIndexDebounce
+        interval: 750
+        onTriggered: if (!iconIndexScan.running) iconIndexScan.running = true
+    }
+
+    property Connections desktopEntriesWatch: Connections {
+        target: DesktopEntries.applications
+        function onValuesChanged() {
+            iconIndexDebounce.restart();
+        }
+    }
+
+    Component.onCompleted: root.refreshIcons()
 }

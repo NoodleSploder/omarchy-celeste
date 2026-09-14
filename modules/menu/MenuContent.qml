@@ -183,7 +183,10 @@ Item {
                     anchors.fill: parent
                     asynchronous: true
                     visible: row.isApp && source !== ""
-                    source: row.isApp ? Quickshell.iconPath(row.modelData.appIcon, "application-x-executable") : ""
+                    // OmarchyMenu.iconSource() checks its own fallback index
+                    // before Quickshell's themed lookup, which never notices
+                    // an icon file installed after this process started.
+                    source: row.isApp ? OmarchyMenu.iconSource(row.modelData.appIcon) : ""
                 }
 
                 StyledText {
