@@ -29,7 +29,7 @@ Item {
     property string current: "topbar"
 
     implicitWidth: 760
-    implicitHeight: 340
+    implicitHeight: 520
 
     StyledText {
         id: title

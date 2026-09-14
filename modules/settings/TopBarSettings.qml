@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Layouts
 import "../../core"
 import "../../components"
+import "../../services"
 
 // Top Bar settings: how the bar's three sections are sized.
 //
@@ -37,6 +38,45 @@ Item {
 
     function isRemaining(key) {
         return root.fixedOf(key) === "remaining";
+    }
+
+    // --------------------------------------------------------- orientation
+    //
+    // Every entry except the two section-boundary spacers is eligible: this
+    // never touches bar.entries' order or its enabled flag, only which of
+    // Portrait / Landscape / Both / Off Config.entryVisibility() reports for
+    // it, which Bar.qml's sectionEntriesFor()/hostedBarEntriesFor() read to
+    // decide whether a given monitor (screen.height > screen.width) shows it.
+    // Both is the default -- unset, this list changes nothing from today.
+    readonly property var orientationEntries: (Config.bar.entries || [])
+        .filter(e => e && e.enabled && e.id !== "spacer")
+
+    // Celeste's own bare-word entries get a hand-written label; anything else
+    // is a plugin id, and PluginCatalog already carries the human name Omarchy
+    // itself shows for it (see PluginDetail.qml, which resolves the same way).
+    readonly property var builtinLabels: ({
+        logo: "Logo",
+        activeWindow: "Active window title",
+        workspaces: "Workspace switcher",
+        clock: "Date / time",
+        tray: "System tray",
+        runningApps: "Running apps",
+        statusIcons: "Status icons",
+        power: "Power menu"
+    })
+
+    function labelFor(id) {
+        if (root.builtinLabels[id])
+            return root.builtinLabels[id];
+        for (const p of PluginCatalog.enabledList)
+            if (p.id === id)
+                return p.name;
+        return id;
+    }
+
+    function visibilityFor(id) {
+        const entry = root.orientationEntries.find(e => e.id === id);
+        return Config.entryVisibility(entry || null);
     }
 
     // Always writes the whole sections object: the config merge replaces
@@ -88,8 +128,33 @@ Item {
         root.persist(root.mode, root.snapshotPercent(), next);
     }
 
-    ColumnLayout {
+    // ------------------------------------------------ collapsible groups
+
+    function setCollapse(key, value) {
+        const next = {
+            statusIcons: Config.bar.collapse.statusIcons === true,
+            runningApps: Config.bar.collapse.runningApps === true
+        };
+        next[key] = value;
+        Config.writeBarCollapse(next);
+    }
+
+    // A Flickable, not a plain ColumnLayout anchored to fill: the portrait
+    // list below grows with however many entries are enabled, and the panel
+    // itself (SettingsContent.qml) is a fixed height -- content that outgrows
+    // it needs to scroll rather than spill past the panel's bottom edge or
+    // get silently clipped.
+    Flickable {
         anchors.fill: parent
+        contentWidth: width
+        contentHeight: content.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+
+        ColumnLayout {
+        id: content
+
+        width: parent.width
         spacing: Tokens.spacing.medium
 
         RowLayout {
@@ -177,8 +242,138 @@ Item {
             }
         }
 
-        Item {
-            Layout.fillHeight: true
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 1
+            color: Colours.palette.m3outlineVariant
+        }
+
+        StyledText {
+            text: "Orientation"
+            font: Tokens.font.body.normal
+            color: Colours.palette.m3onSurface
+        }
+
+        StyledText {
+            Layout.fillWidth: true
+            text: "Show each item on portrait monitors, landscape ones, both (the default), or neither."
+            font: Tokens.font.body.small
+            color: Colours.palette.m3outline
+            wrapMode: Text.WordWrap
+        }
+
+        Repeater {
+            model: root.orientationEntries
+
+            delegate: RowLayout {
+                id: orientationRow
+
+                required property var modelData
+                readonly property var vis: root.visibilityFor(orientationRow.modelData.id)
+
+                Layout.fillWidth: true
+                spacing: Tokens.spacing.small
+
+                StyledText {
+                    Layout.fillWidth: true
+                    text: root.labelFor(orientationRow.modelData.id)
+                    font: Tokens.font.body.normal
+                    color: Colours.palette.m3onSurface
+                    elide: Text.ElideRight
+                }
+
+                Choice {
+                    label: "Both"
+                    active: orientationRow.vis.portrait && orientationRow.vis.landscape
+                    onClicked: Config.writeBarEntryVisibility(orientationRow.modelData.id, true, true)
+                }
+
+                Choice {
+                    label: "Portrait"
+                    active: orientationRow.vis.portrait && !orientationRow.vis.landscape
+                    onClicked: Config.writeBarEntryVisibility(orientationRow.modelData.id, true, false)
+                }
+
+                Choice {
+                    label: "Landscape"
+                    active: !orientationRow.vis.portrait && orientationRow.vis.landscape
+                    onClicked: Config.writeBarEntryVisibility(orientationRow.modelData.id, false, true)
+                }
+
+                Choice {
+                    label: "Off"
+                    active: !orientationRow.vis.portrait && !orientationRow.vis.landscape
+                    onClicked: Config.writeBarEntryVisibility(orientationRow.modelData.id, false, false)
+                }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 1
+            color: Colours.palette.m3outlineVariant
+        }
+
+        StyledText {
+            text: "Collapsible icon groups"
+            font: Tokens.font.body.normal
+            color: Colours.palette.m3onSurface
+        }
+
+        StyledText {
+            Layout.fillWidth: true
+            text: "Collapsible starts the group behind a single circular icon; hover or click it to expand, move away to collapse it again."
+            font: Tokens.font.body.small
+            color: Colours.palette.m3outline
+            wrapMode: Text.WordWrap
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Tokens.spacing.medium
+
+            StyledText {
+                Layout.fillWidth: true
+                text: "System icons"
+                font: Tokens.font.body.normal
+                color: Colours.palette.m3onSurface
+            }
+
+            Choice {
+                label: "Expanded"
+                active: Config.bar.collapse.statusIcons !== true
+                onClicked: root.setCollapse("statusIcons", false)
+            }
+
+            Choice {
+                label: "Collapsible"
+                active: Config.bar.collapse.statusIcons === true
+                onClicked: root.setCollapse("statusIcons", true)
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Tokens.spacing.medium
+
+            StyledText {
+                Layout.fillWidth: true
+                text: "Running apps"
+                font: Tokens.font.body.normal
+                color: Colours.palette.m3onSurface
+            }
+
+            Choice {
+                label: "Expanded"
+                active: Config.bar.collapse.runningApps !== true
+                onClicked: root.setCollapse("runningApps", false)
+            }
+
+            Choice {
+                label: "Collapsible"
+                active: Config.bar.collapse.runningApps === true
+                onClicked: root.setCollapse("runningApps", true)
+            }
         }
 
         StyledText {
@@ -189,6 +384,7 @@ Item {
             font: Tokens.font.body.small
             color: Colours.palette.m3outline
             wrapMode: Text.WordWrap
+        }
         }
     }
 
@@ -302,4 +498,7 @@ Item {
             onClicked: stepButton.clicked()
         }
     }
+
+    // Same track/knob switch PluginDetail.qml uses for "Show on Celeste bar",
+    // generalised for reuse here rather than duplicated.
 }

@@ -157,7 +157,15 @@ QtObject {
                 { id: "network", enabled: true },
                 { id: "bluetooth", enabled: true },
                 { id: "battery", enabled: true }
-            ]
+            ],
+            // Whether the status-icon pill / running-apps row starts
+            // collapsed behind a single circular glyph, expanding on hover
+            // or click and collapsing again once the pointer leaves -- see
+            // StatusIcons.qml/RunningApps.qml's own `collapsible`/`expanded`.
+            // Off (the default) is today's always-expanded behaviour,
+            // unchanged; a user opts into collapsing from the settings
+            // panel's Top Bar page.
+            collapse: { statusIcons: false, runningApps: false }
         },
         dashboard: { enabled: true, showOnHover: false, dragThreshold: 30, mediaUpdateInterval: 500 },
         sidebar: { dragThreshold: 50 },
@@ -225,6 +233,61 @@ QtObject {
         writer.setText(JSON.stringify(next, null, 2));
     }
 
+    // Whether one bar entry shows on a portrait screen and on a landscape
+    // screen, independently -- the four combinations are Both (the default),
+    // Portrait only, Landscape only, and Off. Read by Bar.qml's
+    // sectionEntriesFor()/hostedBarEntriesFor() (screen.height > screen.width
+    // is what decides which one applies to a given monitor) and by the
+    // settings panel's Top Bar page, so both stay in agreement about what a
+    // stored entry means.
+    //
+    // showPortrait/showLandscape are undefined unless explicitly set to
+    // false -- an entry with neither key present is "Both" without needing
+    // two keys written for the common case. hidePortrait is the older,
+    // two-state field this replaces (see CLAUDE.md-style history: it could
+    // only express Both/Landscape); an entry that still only has it read as
+    // Landscape, same as it always did.
+    function entryVisibility(entry) {
+        if (!entry)
+            return { portrait: true, landscape: true };
+        if (entry.showPortrait !== undefined || entry.showLandscape !== undefined) {
+            return {
+                portrait: entry.showPortrait !== false,
+                landscape: entry.showLandscape !== false
+            };
+        }
+        if (entry.hidePortrait === true)
+            return { portrait: false, landscape: true };
+        return { portrait: true, landscape: true };
+    }
+
+    // Persists one entry's visibility and writes the whole entries list back
+    // through writeBarEntries (see its own comment on why the full list has
+    // to be sent). Clears any legacy hidePortrait on the entry at the same
+    // time, so a re-saved entry always carries the current-format fields.
+    function writeBarEntryVisibility(id, portrait, landscape) {
+        const list = root.bar.entries || [];
+        const next = [];
+        for (const e of list) {
+            const copy = {};
+            for (const k in e)
+                copy[k] = e[k];
+            if (copy.id === id) {
+                delete copy.hidePortrait;
+                if (portrait)
+                    delete copy.showPortrait;
+                else
+                    copy.showPortrait = false;
+                if (landscape)
+                    delete copy.showLandscape;
+                else
+                    copy.showLandscape = false;
+            }
+            next.push(copy);
+        }
+        root.writeBarEntries(next);
+    }
+
     // Persists the bar's section sizing (the settings panel's Top Bar page).
     //
     // Only bar.sections is touched: anything else the user has under `bar` --
@@ -239,6 +302,23 @@ QtObject {
         for (const k in (root.user.bar || ({})))
             bar[k] = root.user.bar[k];
         bar.sections = values;
+        next.bar = bar;
+        root.user = next;
+        writer.setText(JSON.stringify(next, null, 2));
+    }
+
+    // Persists bar.collapse (the settings panel's "Collapsible icon groups"
+    // controls). Same whole-object-write shape as writeBarSections -- the
+    // caller assembles the full { statusIcons, runningApps } object from the
+    // current effective values with its one change applied.
+    function writeBarCollapse(values) {
+        const next = {};
+        for (const k in root.user)
+            next[k] = root.user[k];
+        const bar = {};
+        for (const k in (root.user.bar || ({})))
+            bar[k] = root.user.bar[k];
+        bar.collapse = values;
         next.bar = bar;
         root.user = next;
         writer.setText(JSON.stringify(next, null, 2));

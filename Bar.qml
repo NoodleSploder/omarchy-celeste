@@ -170,7 +170,15 @@ Item {
     //
     // A THIRD or later spacer is not a boundary; it stays in whatever section
     // it landed in and still works as an in-section filler.
-    readonly property var sectionEntries: {
+    //
+    // Takes isPortrait rather than being a plain readonly property because
+    // whether an entry is hidden now also depends on which screen is asking:
+    // Config.entryVisibility() reads each entry's Portrait/Landscape/Both/Off
+    // setting (see the settings panel's Top Bar page) and this keeps only the
+    // entries that setting allows on this screen's orientation. Each
+    // per-screen `panel` calls this with its own isPortrait rather than
+    // sharing one computed list.
+    function sectionEntriesFor(isPortrait) {
         const out = { left: [], middle: [], right: [] };
         const order = ["left", "middle", "right"];
         let bucket = 0;
@@ -179,6 +187,9 @@ Item {
                 bucket++;
                 continue;
             }
+            const vis = Config.entryVisibility(e);
+            if (isPortrait ? !vis.portrait : !vis.landscape)
+                continue;
             out[order[bucket]].push(e);
         }
         return out;
@@ -401,6 +412,22 @@ Item {
     }
 
     readonly property var hostedBarIds: root.hostedBarEntries.map(e => String(e.id))
+
+    // Per-screen counterpart to hostedBarEntries, same reason
+    // sectionEntriesFor() exists: an entry's Portrait/Landscape/Both/Off
+    // setting has to drop a hosted plugin's REAL widget in anchorSurface, not
+    // just its zero-height placeholder back in the bar. Without this the
+    // placeholder correctly vanished on a screen the setting excludes but the
+    // actual widget kept rendering anyway, unpositioned (nothing ever
+    // published an x/width for it on that screen, so it sat at the band's
+    // default origin) -- the bug this originally fixed for portrait-only;
+    // applies the same way now that Off/Landscape-only can also exclude it.
+    function hostedBarEntriesFor(isPortrait) {
+        return root.hostedBarEntries.filter(e => {
+            const vis = Config.entryVisibility(e);
+            return isPortrait ? vis.portrait : vis.landscape;
+        });
+    }
 
     // Two maps, not one record. The placeholder's implicitWidth reads the
     // width map and its publish writes the x map; the widget's x reads the x
@@ -717,6 +744,11 @@ Item {
 
             screen: anchorSurface.modelData
 
+            // Same taller-than-wide check as panel.isPortrait -- kept
+            // separate rather than shared because this is a different
+            // PanelWindow instance with its own modelData.
+            readonly property bool isPortrait: anchorSurface.modelData.height > anchorSurface.modelData.width
+
             WlrLayershell.layer: WlrLayer.Top
             WlrLayershell.namespace: "celeste-anchors"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
@@ -783,7 +815,7 @@ Item {
                 height: root.barSize
 
                 Repeater {
-                    model: root.hostedBarEntries
+                    model: root.hostedBarEntriesFor(anchorSurface.isPortrait)
 
                     delegate: BarModules.HostedWidget {
                         required property var modelData
@@ -861,6 +893,12 @@ Item {
             required property var modelData
 
             screen: panel.modelData
+
+            // Quickshell's screen width/height already reflect a rotated
+            // output's visual geometry (Overview.qml's own aspect-ratio calc
+            // already relies on the same thing), so this is a plain
+            // taller-than-wide check, not a transform lookup.
+            readonly property bool isPortrait: panel.modelData.height > panel.modelData.width
 
             WlrLayershell.layer: WlrLayer.Top
             WlrLayershell.namespace: "celeste-bar"
@@ -1261,7 +1299,7 @@ Item {
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
                         width: barContent.widths.left
-                        entries: root.sectionEntries.left
+                        entries: root.sectionEntriesFor(panel.isPortrait).left
                         resolve: panel.componentFor
                         alignment: Qt.AlignLeft
                     }
@@ -1273,7 +1311,7 @@ Item {
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
                         width: barContent.widths.middle
-                        entries: root.sectionEntries.middle
+                        entries: root.sectionEntriesFor(panel.isPortrait).middle
                         resolve: panel.componentFor
                         alignment: Qt.AlignHCenter
                     }
@@ -1285,7 +1323,7 @@ Item {
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
                         width: barContent.widths.right
-                        entries: root.sectionEntries.right
+                        entries: root.sectionEntriesFor(panel.isPortrait).right
                         resolve: panel.componentFor
                         alignment: Qt.AlignRight
                     }
